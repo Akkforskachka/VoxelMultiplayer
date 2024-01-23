@@ -1,0 +1,14 @@
+{
+    "langs": {
+        "en_US": {
+            "name": "English"
+        },
+		"su_SU": {
+            "name": "Советский"
+        },
+        "ru_RU": {
+            "name": "Русский"
+        }
+    },
+    "fallback": "en_US"
+}
