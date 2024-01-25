@@ -345,6 +345,7 @@ void HudRenderer::update(bool visible) {
     inventoryView->visible(inventoryOpen);
     contentAccessPanel->visible(inventoryOpen);
     contentAccessPanel->size(glm::vec2(invSize.x, Window::height));
+    hotbarView->visible(visible);
 
     for (int i = keycode::NUM_1; i <= keycode::NUM_9; i++) {
         if (Events::jpressed(i)) {
@@ -354,7 +355,7 @@ void HudRenderer::update(bool visible) {
     if (Events::jpressed(keycode::NUM_0)) {
         player->setChosenSlot(9);
     }
-    if (!inventoryOpen && Events::scroll) {
+    if (!pause && !inventoryOpen && Events::scroll) {
         int slot = player->getChosenSlot();
         slot = (slot - Events::scroll) % 10;
         if (slot < 0) {
