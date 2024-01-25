@@ -234,8 +234,7 @@ bool Socket::SendMessage(const char *msg, int length, socketfd dest, bool wait)
     assert(0 && "TODO: Implement windows API");
 #else 
     int r = send(dest, msg, length, wait ? 0 : MSG_DONTWAIT);
-    if(r > 0)
-        std::cout << "sent message of size " << length << std::endl;
+
     return r > 0;
 #endif // _WIN32
 }

@@ -95,7 +95,6 @@ bool ChunksController::loadVisible(){
 		{
 			chunk = std::make_shared<Chunk>(nearX+ox, nearZ+oz);
 			level->chunksStorage->store(chunk);
-			chunks->putChunk(chunk);
 			ses->ClientFetchChunk(chunk, nearX+ox, nearZ+oz);
 			return true;
 		}

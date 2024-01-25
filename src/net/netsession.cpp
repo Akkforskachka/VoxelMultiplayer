@@ -89,12 +89,12 @@ void NetSession::HandleConnection(Player *rp, socketfd ui)
 
     sharedLevel->world->write(sharedLevel);
 
-    // size_t blCount = sharedLevel->content->indices->countBlockDefs();
+    size_t blCount = sharedLevel->content->getIndices()->countBlockDefs();
 
     dynamic::Map worldData = dynamic::Map();
-    // worldData.put("seed", sharedLevel->world->seed);
-    // worldData.put("count", blCount);
-    // worldData.put("name", sharedLevel->world->name);
+    worldData.put("seed", sharedLevel->world->getSeed());
+    worldData.put("count", blCount);
+    worldData.put("name", sharedLevel->world->getName());
     worldData.put("user", ui);
 
     dynamic::Map& verObj = worldData.putMap("version");
@@ -124,14 +124,14 @@ bool NetSession::ConnectToSession(const char *ip, Engine *eng, bool versionCheck
         return false;
     }
     std::cout << "[INFO]: Connected, waiting for initial message" << std::endl;
-    char buff[128];
-    socket.RecieveMessage(buff, 128, socket.sockfd, true);
+    char buff[NetSize()];
+    socket.RecieveMessage(buff, NetSize(), socket.sockfd, true);
     std::cout << "[INFO]: Connection message: " << buff << std::endl;
 
     std::unique_ptr<dynamic::Map> data = json::parse(buff);
 
-    // data->num("seed", connData.seed);
-    // data->num("count", connData.blockCount);
+    data->num("seed", connData.seed);
+    data->num("count", connData.blockCount);
     data->map("version")->num("major", connData.major);
     data->map("version")->num("minor", connData.minor);
     data->num("user", connData.userID );
@@ -152,8 +152,8 @@ bool NetSession::ConnectToSession(const char *ip, Engine *eng, bool versionCheck
 
     if(contentChecking)
     {
-        // if(connData.blockCount != eng->getContent()->getBlockDefs().count)
-        //     return false;
+        if(connData.blockCount != eng->getContent()->getIndices()->countBlockDefs())
+            return false;
 
         // for(std::string name : connData.blockNames)
         // {
@@ -185,6 +185,7 @@ void NetSession::ProcessPackage(NetPackage *pkg)
         {
             case NetAction::SERVER_UPDATE:
                 serverUpdate = true;
+            break;
             case NetAction::MODIFY:
                 sharedLevel->chunks->set((int)msg->coordinates.x, (int)msg->coordinates.y, (int)msg->coordinates.z, msg->block, msg->states);
                 pkgToSend.msgCount -= 1; // some trash, need to fix it later
@@ -192,17 +193,16 @@ void NetSession::ProcessPackage(NetPackage *pkg)
             case NetAction::FETCH:
                 if(sesMode == NetMode::CLIENT)
                 {
-                    std::shared_ptr<Chunk> chunk = chunksQueue.at({msg->coordinates.x, msg->coordinates.z});
+                    std::shared_ptr<Chunk> chunk = sharedLevel->chunksStorage->get((int)msg->coordinates.x, (int)msg->coordinates.z);
+                    if(chunk == nullptr) continue;
+                    if(chunk->isLoaded()) continue;;
                     if(msg->data)
                     {
-                        if(chunk->decode(msg->data))
-                        {
-                            std::cout << "finishing fetching\n";
-                        }
-                        else continue;
+                        chunk->decode(msg->data);
 
+                        // chunksQueue.erase({msg->coordinates.x, msg->coordinates.z});
 
-                        chunksQueue.erase({msg->coordinates.x, msg->coordinates.z});
+                        sharedLevel->chunks->putChunk(chunk);
 
                         for (size_t i = 0; i < CHUNK_VOL; i++) {
                             blockid_t id = chunk->voxels[i].id;
@@ -210,13 +210,13 @@ void NetSession::ProcessPackage(NetPackage *pkg)
                                 std::cout << "corruped block detected at " << i << " of chunk ";
                                 std::cout << chunk->x << "x" << chunk->z;
                                 std::cout << " -> " << (int)id << std::endl;
-                                chunk->voxels[i].id = 3;
+                                chunk->voxels[i].id = 11;
                             }
                         }
 
                         chunk->updateHeights();
 
-                        Lighting::prebuildSkyLight( chunk.get(), sharedLevel->content->getIndices());
+                        Lighting::prebuildSkyLight(chunk.get(), sharedLevel->content->getIndices());
 
                         chunk->setLoaded(true);
                         chunk->setReady(false);
@@ -226,7 +226,6 @@ void NetSession::ProcessPackage(NetPackage *pkg)
                 else if(sesMode == NetMode::PLAY_SERVER)
                 {
                     if(b) continue;
-                    b = true;
 
                     ubyte *data = ServerGetChunk((int)msg->coordinates.x, (int)msg->coordinates.z);
 
@@ -237,7 +236,7 @@ void NetSession::ProcessPackage(NetPackage *pkg)
                         fm.coordinates.x = msg->coordinates.x;
                         fm.coordinates.z = msg->coordinates.z;
                         fm.data = data;
-
+                        b = true;
                         RegisterMessage(fm);
                     }
                 }
@@ -271,8 +270,6 @@ void NetSession::ServerRoutine()
         NetMessage upd = NetMessage();
         upd.action = NetAction::SERVER_UPDATE;
         servPkg.messages[servPkg.msgCount++] = upd;
-
-        if(servPkg.msgCount <= 0) return;
          
         for(NetUser *usr : users)
         {
@@ -296,13 +293,15 @@ void NetSession::ClientRoutine()
 
     if(serverUpdate)
     {
-        for(auto it : chunksQueue)
+        auto it = chunksQueue.begin();
+        if(it != chunksQueue.end())
         {
             NetMessage fm = NetMessage();
             fm.action = NetAction::FETCH;
-            fm.coordinates.x = it.second->x;
-            fm.coordinates.z = it.second->z;
+            fm.coordinates.x = it->second->x;
+            fm.coordinates.z = it->second->z;
             RegisterMessage(fm);
+            chunksQueue.erase(it->first);
         }
 
         if(pkgToSend.msgCount > 0)
@@ -317,25 +316,22 @@ void NetSession::ClientRoutine()
 void NetSession::ClientFetchChunk(std::shared_ptr<Chunk> chunk, int x, int z)
 {
     chunksQueue.insert_or_assign({x, z}, chunk);
-    // std::cout << "starting fetching" << x << " " << z << std::endl;
 }
 
 ubyte *NetSession::ServerGetChunk(int x, int z)
 {
     std::shared_ptr<Chunk> chunk = sharedLevel->chunksStorage->get(x, z);
 
-    if(chunk.get())
+    if(chunk)
     {
-        ubyte *buffer = chunk->encode();
-        std::cout << "found the chunk\n";
-        return buffer;
+        if(chunk->isReady())
+        {
+            ubyte *buffer = chunk->encode();
+            return buffer;
+        }
     }
-    else
-    {
-        // TODO: generate the chunk
-        std::cout << "no such chunk\n";
-        return nullptr;
-    }
+    // TODO: generate chunk
+    return nullptr;
 }
 
 float serv_delta = 0;

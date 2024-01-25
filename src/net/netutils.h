@@ -14,7 +14,7 @@
 #define NET_PORT 6969
 #define SERVER_BIT_RATE 30
 #define MAX_CONN 5
-#define MAX_PACKAGE_SIZE 10
+#define MAX_PACKAGE_SIZE 20
 
 #ifdef _WIN32
 #else
@@ -64,6 +64,6 @@ struct NetPackage
     NetMessage messages[MAX_PACKAGE_SIZE];
 };
 
-constexpr int NetSize()  { return 1024; } // todo
+constexpr int NetSize()  { return 5128; } // todo
 
 #endif // NET_UTILS_H
