@@ -76,7 +76,7 @@ public:
     void Update(float delta) noexcept;
     void RegisterMessage(const NetMessage& msg) noexcept;
     void SetSharedLevel(Level *sl);
-    void ClientFetchChunk(std::shared_ptr<Chunk> chunk, uint& x, uint& z);
+    void ClientFetchChunk(std::shared_ptr<Chunk> chunk, int x, int z);
 
 public:
     NetMode GetSessionType() const;

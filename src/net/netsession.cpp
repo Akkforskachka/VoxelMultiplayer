@@ -13,6 +13,8 @@
 #include "../engine.h"
 #include "../voxels/Chunk.h"
 #include "../voxels/Chunks.h"
+#include "../voxels/ChunksStorage.h"
+#include "../lighting/Lighting.h"
 
 namespace fs = std::filesystem;
 
@@ -175,11 +177,14 @@ NetUser *NetSession::AddUser(NetUserRole role, Player *pl, int id)
 
 void NetSession::ProcessPackage(NetPackage *pkg)
 {
+    bool b = false;
     for(int i = 0; i < pkg->msgCount; i++)
     {
         NetMessage *msg = &pkg->messages[i]; 
         switch(msg->action)
         {
+            case NetAction::SERVER_UPDATE:
+                serverUpdate = true;
             case NetAction::MODIFY:
                 sharedLevel->chunks->set((int)msg->coordinates.x, (int)msg->coordinates.y, (int)msg->coordinates.z, msg->block, msg->states);
                 pkgToSend.msgCount -= 1; // some trash, need to fix it later
@@ -188,16 +193,41 @@ void NetSession::ProcessPackage(NetPackage *pkg)
                 if(sesMode == NetMode::CLIENT)
                 {
                     std::shared_ptr<Chunk> chunk = chunksQueue.at({msg->coordinates.x, msg->coordinates.z});
-                    chunksQueue.erase({msg->coordinates.x, msg->coordinates.z});
-
                     if(msg->data)
                     {
-                        chunk->decode(msg->data);
-                        // chunk->setLoaded(true);
-                    }
+                        if(chunk->decode(msg->data))
+                        {
+                            std::cout << "finishing fetching\n";
+                        }
+                        else continue;
+
+
+                        chunksQueue.erase({msg->coordinates.x, msg->coordinates.z});
+
+                        for (size_t i = 0; i < CHUNK_VOL; i++) {
+                            blockid_t id = chunk->voxels[i].id;
+                            if (sharedLevel->content->getIndices()->getBlockDef(id) == nullptr) {
+                                std::cout << "corruped block detected at " << i << " of chunk ";
+                                std::cout << chunk->x << "x" << chunk->z;
+                                std::cout << " -> " << (int)id << std::endl;
+                                chunk->voxels[i].id = 3;
+                            }
+                        }
+
+                        chunk->updateHeights();
+
+                        Lighting::prebuildSkyLight( chunk.get(), sharedLevel->content->getIndices());
+
+                        chunk->setLoaded(true);
+                        chunk->setReady(false);
+                        chunk->setLighted(false);
+                    }                            
                 }
                 else if(sesMode == NetMode::PLAY_SERVER)
                 {
+                    if(b) continue;
+                    b = true;
+
                     ubyte *data = ServerGetChunk((int)msg->coordinates.x, (int)msg->coordinates.z);
 
                     if(data)
@@ -233,11 +263,14 @@ void NetSession::ServerRoutine()
         }
 
         NetPackage servPkg = NetPackage();
-        for(int i = 0; i - 1 < pkgToSend.msgCount; i++)
+        for(int i = 0; i < pkgToSend.msgCount; i++)
         {
-            servPkg.messages[i] = pkgToSend.messages[i - 1];
+            servPkg.messages[i] = pkgToSend.messages[i];
             servPkg.msgCount++;
         }
+        NetMessage upd = NetMessage();
+        upd.action = NetAction::SERVER_UPDATE;
+        servPkg.messages[servPkg.msgCount++] = upd;
 
         if(servPkg.msgCount <= 0) return;
          
@@ -263,6 +296,15 @@ void NetSession::ClientRoutine()
 
     if(serverUpdate)
     {
+        for(auto it : chunksQueue)
+        {
+            NetMessage fm = NetMessage();
+            fm.action = NetAction::FETCH;
+            fm.coordinates.x = it.second->x;
+            fm.coordinates.z = it.second->z;
+            RegisterMessage(fm);
+        }
+
         if(pkgToSend.msgCount > 0)
         {
             socket.SendPackage(&pkgToSend, socket.sockfd);
@@ -272,24 +314,20 @@ void NetSession::ClientRoutine()
     }
 }
 
-void NetSession::ClientFetchChunk(std::shared_ptr<Chunk> chunk, uint& x, uint& z)
+void NetSession::ClientFetchChunk(std::shared_ptr<Chunk> chunk, int x, int z)
 {
     chunksQueue.insert_or_assign({x, z}, chunk);
-
-    NetMessage fm = NetMessage();
-    fm.action = NetAction::FETCH;
-    fm.coordinates.x = x;
-    fm.coordinates.z = z;
-    RegisterMessage(fm);
+    // std::cout << "starting fetching" << x << " " << z << std::endl;
 }
 
 ubyte *NetSession::ServerGetChunk(int x, int z)
 {
     std::shared_ptr<Chunk> chunk = sharedLevel->chunksStorage->get(x, z);
 
-    if(chunk)
+    if(chunk.get())
     {
         ubyte *buffer = chunk->encode();
+        std::cout << "found the chunk\n";
         return buffer;
     }
     else
@@ -304,15 +342,15 @@ float serv_delta = 0;
 void NetSession::Update(float delta) noexcept
 {
     serv_delta += delta;
-    if(serv_delta >= 1 / SERVER_BIT_RATE)
-    {
-        serv_delta = 0;
-        serverUpdate = true;
-    }
     switch(sesMode)
     {
         case NetMode::PLAY_SERVER:
-            ServerRoutine();
+            if(serv_delta >= 1 / SERVER_BIT_RATE)
+            {
+                ServerRoutine();
+                serv_delta = 0;
+                serverUpdate = true;
+            }
         break;
         case NetMode::CLIENT:
             ClientRoutine();

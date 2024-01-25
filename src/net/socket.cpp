@@ -4,6 +4,7 @@
 #include <iostream>
 #include "../coders/json.h"
 #include "netuser.h"
+#include "../coders/gzip.h"
 #include "../voxels/Chunk.h"
 
 bool Socket::StartupServer(const int port)
@@ -143,7 +144,7 @@ void Socket::Deserialize(const char *buff)
     }
     catch(const std::exception& e)
     {
-        std::cerr << e.what() << " in message " << buff << std::endl;
+        std::cerr << e.what() << " in message: " << buff << std::endl;
         return;
     }        
 
@@ -159,6 +160,7 @@ void Socket::Deserialize(const char *buff)
         {
             dynamic::List *msgs = pckg->list("messages");
             NetMessage stmsg = NetMessage();
+            stmsg.data = nullptr;
             for(int i = 0; i < mCount; i++)
             {
                 dynamic::Map *messg = msgs->map(i); 
@@ -185,7 +187,9 @@ void Socket::Deserialize(const char *buff)
                 }
                 if(messg->has("data"))
                 {
-                    stmsg.data = (ubyte *) messg->getStr("data", "").c_str();
+                    std::vector<ubyte> decompressed = gzip::decompress((ubyte *)messg->getStr("data", "").data(), 
+                                                                    messg->getStr("data", "").length());
+                    stmsg.data = decompressed.data();
                 }
                 sPkg.messages[sPkg.msgCount++] = stmsg;
                 stmsg = NetMessage();
@@ -230,6 +234,8 @@ bool Socket::SendMessage(const char *msg, int length, socketfd dest, bool wait)
     assert(0 && "TODO: Implement windows API");
 #else 
     int r = send(dest, msg, length, wait ? 0 : MSG_DONTWAIT);
+    if(r > 0)
+        std::cout << "sent message of size " << length << std::endl;
     return r > 0;
 #endif // _WIN32
 }
@@ -261,13 +267,16 @@ bool Socket::SendPackage(NetPackage *pckg, socketfd sock)
                 p.put(pckg->messages[i].coordinates.y);
                 p.put(pckg->messages[i].coordinates.z);
                 if(pckg->messages[i].data)
-                    msg.put("data", std::string((const char *)pckg->messages[i].data, CHUNK_DATA_LEN));
+                {
+                    std::vector<ubyte> compressed = gzip::compress(pckg->messages[i].data, CHUNK_DATA_LEN);
+                    msg.put("data", std::string((const char *)compressed.data(), compressed.size()));
+                }
             break;
         }
     }
     spk.put("count", pckg->msgCount);
+
     std::string buff = json::stringify(&spk, false, "");
-    
     return SendMessage(buff.c_str(), buff.length(), sock, false);
 }
 

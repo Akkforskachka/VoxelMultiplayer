@@ -38,6 +38,7 @@ enum NetUserRole
 enum NetAction
 {
     UNKOWN,
+    SERVER_UPDATE,
     FETCH,
     MODIFY,
 };
@@ -64,6 +65,5 @@ struct NetPackage
 };
 
 constexpr int NetSize()  { return 1024; } // todo
-
 
 #endif // NET_UTILS_H

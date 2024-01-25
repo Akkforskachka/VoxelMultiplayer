@@ -6,6 +6,7 @@
 #include "ChunksController.h"
 
 #include "scripting/scripting.h"
+#include "../net/netsession.h"
 
 LevelController::LevelController(EngineSettings& settings, Level* level) 
     : settings(settings), level(level) {
@@ -25,4 +26,9 @@ void LevelController::update(float delta, bool input, bool pause) {
     level->update();
     chunks->update(settings.chunks.loadSpeed);
     blocks->update(delta);
+
+    if(NetSession *ses = NetSession::GetSessionInstance())
+    {
+        ses->Update(delta);
+    }
 }

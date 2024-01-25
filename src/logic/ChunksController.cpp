@@ -18,6 +18,8 @@
 #include "../maths/voxmaths.h"
 #include "../util/timeutil.h"
 
+#include "../net/netsession.h"
+
 const uint MAX_WORK_PER_FRAME = 64;
 const uint MIN_SURROUNDING = 9;
 
@@ -86,6 +88,19 @@ bool ChunksController::loadVisible(){
 
     const int ox = chunks->ox;
 	const int oz = chunks->oz;
+	
+	if(NetSession *ses = NetSession::GetSessionInstance())
+	{
+		if(ses->GetSessionType() == NetMode::CLIENT)
+		{
+			chunk = std::make_shared<Chunk>(nearX+ox, nearZ+oz);
+			level->chunksStorage->store(chunk);
+			chunks->putChunk(chunk);
+			ses->ClientFetchChunk(chunk, nearX+ox, nearZ+oz);
+			return true;
+		}
+	}
+
 	createChunk(nearX+ox, nearZ+oz);
 	return true;
 }

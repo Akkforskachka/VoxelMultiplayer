@@ -179,17 +179,27 @@ void open_world(std::string name, Engine* engine, NetMode stp) {
             show_convert_request(engine, content, lut, folder);
         }
     } else {
-        Level* level = World::load(folder, settings, content, packs);
-        NetSession* ses =NetSession::StartSession(stp, level);
-        if(ses)
+        Level *level = World::load(folder, settings, content, packs);
+        if(stp == NetMode::STAND_ALONE)
         {
-            if(NetSession::GetSessionInstance()->StartServer())
-            {
-                engine->setScreen(std::make_shared<LevelScreen>(engine, level));
-                return;
-            }
+            engine->setScreen(std::make_shared<LevelScreen>(engine, level));
         }
-        NetSession::TerminateSession();
+        else
+        {
+            NetSession *ses =NetSession::StartSession(stp, level);
+            if(ses)
+            {
+                if(ses->StartServer())
+                {
+                    engine->setScreen(std::make_shared<LevelScreen>(engine, level));
+                }
+                else
+                {
+                    NetSession::TerminateSession();
+                }
+            }
+
+        }
     }
 }
 
