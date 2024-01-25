@@ -14,22 +14,15 @@
 #include "../lighting/Lightmap.h"
 #include "../typedefs.h"
 
-using glm::ivec2;
-using std::unique_ptr;
-using std::shared_ptr;
-
 ChunksStorage::ChunksStorage(Level* level) : level(level) {
 }
 
-ChunksStorage::~ChunksStorage() {
+void ChunksStorage::store(std::shared_ptr<Chunk> chunk) {
+	chunksMap[glm::ivec2(chunk->x, chunk->z)] = chunk;
 }
 
-void ChunksStorage::store(shared_ptr<Chunk> chunk) {
-	chunksMap[ivec2(chunk->x, chunk->z)] = chunk;
-}
-
-shared_ptr<Chunk> ChunksStorage::get(int x, int z) const {
-	auto found = chunksMap.find(ivec2(x, z));
+std::shared_ptr<Chunk> ChunksStorage::get(int x, int z) const {
+	auto found = chunksMap.find(glm::ivec2(x, z));
 	if (found == chunksMap.end()) {
 		return nullptr;
 	}
@@ -37,36 +30,38 @@ shared_ptr<Chunk> ChunksStorage::get(int x, int z) const {
 }
 
 void ChunksStorage::remove(int x, int z) {
-	auto found = chunksMap.find(ivec2(x, z));
+	auto found = chunksMap.find(glm::ivec2(x, z));
 	if (found != chunksMap.end()) {
 		chunksMap.erase(found->first);
 	}
 }
 
-std::shared_ptr<Chunk> ChunksStorage::create(int x, int z) {
-	World* world = level->world;
+static void verifyLoadedChunk(ContentIndices* indices, Chunk* chunk) {
+    for (size_t i = 0; i < CHUNK_VOL; i++) {
+        blockid_t id = chunk->voxels[i].id;
+        if (indices->getBlockDef(id) == nullptr) {
+            std::cout << "corruped block detected at " << i << " of chunk ";
+            std::cout << chunk->x << "x" << chunk->z;
+            std::cout << " -> " << (int)id << std::endl;
+            chunk->voxels[i].id = 11;
+        }
+    }
+}
 
-	auto chunk = shared_ptr<Chunk>(new Chunk(x, z));
+std::shared_ptr<Chunk> ChunksStorage::create(int x, int z) {
+	World* world = level->getWorld();
+    WorldFiles* wfile = world->wfile;
+
+    auto chunk = std::make_shared<Chunk>(x, z);
 	store(chunk);
-	unique_ptr<ubyte> data(world->wfile->getChunk(chunk->x, chunk->z));
+	std::unique_ptr<ubyte[]> data(wfile->getChunk(chunk->x, chunk->z));
 	if (data) {
 		chunk->decode(data.get());
 		chunk->setLoaded(true);
+        verifyLoadedChunk(level->content->getIndices(), chunk.get());
 	}
 
-	// Verifying and converting data
-	ContentIndices* indices = level->content->indices;
-	for (size_t i = 0; i < CHUNK_VOL; i++) {
-		blockid_t id = chunk->voxels[i].id;
-		if (indices->getBlockDef(id) == nullptr) {
-			std::cout << "corruped block detected at " << i << " of chunk ";
-			std::cout << chunk->x << "x" << chunk->z;
-			std::cout << " -> " << (int)id << std::endl;
-			chunk->voxels[i].id = 11;
-		}
-	}
-
-	light_t* lights = world->wfile->getLights(chunk->x, chunk->z);
+	light_t* lights = wfile->getLights(chunk->x, chunk->z);
 	if (lights) {
 		chunk->lightmap->set(lights);
 		chunk->setLoadedLights(true);
@@ -77,7 +72,7 @@ std::shared_ptr<Chunk> ChunksStorage::create(int x, int z) {
 // some magic code
 void ChunksStorage::getVoxels(VoxelsVolume* volume, bool backlight) const {
 	const Content* content = level->content;
-	const ContentIndices* indices = content->indices;
+	auto indices = content->getIndices();
 	voxel* voxels = volume->getVoxels();
 	light_t* lights = volume->getLights();
 	int x = volume->getX();
@@ -100,7 +95,7 @@ void ChunksStorage::getVoxels(VoxelsVolume* volume, bool backlight) const {
 	// cw*ch chunks will be scanned
 	for (int cz = scz; cz < scz + ch; cz++) {
 		for (int cx = scx; cx < scx + cw; cx++) {
-			auto found = chunksMap.find(ivec2(cx, cz));
+			auto found = chunksMap.find(glm::ivec2(cx, cz));
 			if (found == chunksMap.end()) {
 				// no chunk loaded -> filling with BLOCK_VOID
 				for (int ly = y; ly < y + h; ly++) {
@@ -117,7 +112,7 @@ void ChunksStorage::getVoxels(VoxelsVolume* volume, bool backlight) const {
 					}
 				}
 			} else {
-				const std::shared_ptr<Chunk>& chunk = found->second;
+				auto& chunk = found->second;
 				const voxel* cvoxels = chunk->voxels;
 				const light_t* clights = chunk->lightmap->getLights();
 				for (int ly = y; ly < y + h; ly++) {

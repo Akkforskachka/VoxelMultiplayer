@@ -5,6 +5,7 @@
 #include "../world/Level.h"
 #include "../window/Events.h"
 #include "../window/Camera.h"
+#include "../items/Inventory.h"
 
 #include <glm/glm.hpp>
 
@@ -18,16 +19,16 @@ const float JUMP_FORCE = 8.0f;
 
 Player::Player(glm::vec3 position, float speed) :
 		speed(speed),
-		chosenBlock(1) {
-	camera = new Camera(position, glm::radians(90.0f));
-	currentViewCamera = camera;
-	SPCamera = new Camera(position, glm::radians(90.0f));
-	TPCamera = new Camera(position, glm::radians(90.0f));
-	hitbox = new Hitbox(position, glm::vec3(0.3f,0.9f,0.3f));
+		chosenSlot(0),
+	    camera(new Camera(position, glm::radians(90.0f))),
+	    spCamera(new Camera(position, glm::radians(90.0f))),
+	    tpCamera(new Camera(position, glm::radians(90.0f))),
+        currentCamera(camera),
+	    hitbox(new Hitbox(position, glm::vec3(0.3f,0.9f,0.3f))),
+        inventory(new Inventory(40)) {
 }
 
-Player::~Player(){
-	delete hitbox;
+Player::~Player() {
 }
 
 void Player::update(
@@ -75,7 +76,7 @@ void Player::update(
     float vel = std::max(glm::length(hitbox->velocity * 0.25f), 1.0f);
 	int substeps = int(delta * vel * 1000);
 	substeps = std::min(100, std::max(1, substeps));
-	level->physics->step(level->chunks, hitbox, 
+	level->physics->step(level->chunks, hitbox.get(), 
 						 delta,  substeps, 
 						 crouch, flight ? 0.0f : 1.0f, 
 						 !noclip);
@@ -116,12 +117,53 @@ void Player::update(
 
 	input.noclip = false;
 	input.flight = false;
+
+	if (spawnpoint.y <= 0.1) {
+		attemptToFindSpawnpoint(level);
+	}
 }
 
 void Player::teleport(glm::vec3 position) {
 	hitbox->position = position;
 }
 
+void Player::attemptToFindSpawnpoint(Level* level) {
+	glm::vec3 ppos = hitbox->position;
+	glm::vec3 newpos {ppos.x + (rand() % 200 - 100),
+					  rand() % 80 + 100,
+					  ppos.z + (rand() % 200 - 100)};
+	while (newpos.y > 0 && !level->chunks->isObstacleBlock(newpos.x, newpos.y-2, newpos.z)) {
+		newpos.y--;
+	}
+
+	voxel* headvox = level->chunks->get(newpos.x, newpos.y+1, newpos.z);
+	if (level->chunks->isObstacleBlock(newpos.x, newpos.y, newpos.z) ||
+		headvox == nullptr || headvox->id != 0)
+		return;
+	spawnpoint = newpos;
+	teleport(spawnpoint);
+}
+
+void Player::setChosenSlot(int index) {
+    chosenSlot = index;
+}
+
+int Player::getChosenSlot() const {
+    return chosenSlot;
+}
+
 float Player::getSpeed() const {
 	return speed;
+}
+
+std::shared_ptr<Inventory> Player::getInventory() const {
+    return inventory;
+}
+
+void Player::setSpawnPoint(glm::vec3 spawnpoint) {
+	this->spawnpoint = spawnpoint;
+}
+
+glm::vec3 Player::getSpawnPoint() const {
+	return spawnpoint;
 }

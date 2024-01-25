@@ -87,15 +87,15 @@ void NetSession::HandleConnection(Player *rp, socketfd ui)
 
     sharedLevel->world->write(sharedLevel);
 
-    size_t blCount = sharedLevel->content->indices->countBlockDefs();
+    // size_t blCount = sharedLevel->content->indices->countBlockDefs();
 
-    json::JObject worldData = json::JObject();
-    worldData.put("seed", sharedLevel->world->seed);
-    worldData.put("count", blCount);
-    worldData.put("name", sharedLevel->world->name);
+    dynamic::Map worldData = dynamic::Map();
+    // worldData.put("seed", sharedLevel->world->seed);
+    // worldData.put("count", blCount);
+    // worldData.put("name", sharedLevel->world->name);
     worldData.put("user", ui);
 
-    json::JObject& verObj = worldData.putObj("version");
+    dynamic::Map& verObj = worldData.putMap("version");
     verObj.put("major", ENGINE_VERSION_MAJOR);
     verObj.put("minor", ENGINE_VERSION_MINOR);
 
@@ -126,14 +126,13 @@ bool NetSession::ConnectToSession(const char *ip, Engine *eng, bool versionCheck
     socket.RecieveMessage(buff, 128, socket.sockfd, true);
     std::cout << "[INFO]: Connection message: " << buff << std::endl;
 
-    json::JObject *data = json::parse(buff);
+    std::unique_ptr<dynamic::Map> data = json::parse(buff);
 
-    connData.name = data->getStr("name", "");
-    connData.seed = data->getInteger("seed", 0);
-    connData.blockCount = data->getInteger("count", 0);
-    connData.major = data->obj("version")->getInteger("major", 0);
-    connData.minor = data->obj("version")->getInteger("minor", 0);
-    connData.userID = data->getInteger("user", -1);
+    // data->num("seed", connData.seed);
+    // data->num("count", connData.blockCount);
+    data->map("version")->num("major", connData.major);
+    data->map("version")->num("minor", connData.minor);
+    data->num("user", connData.userID );
 
     // for(json::Value *val : data->arr("content")->values)
     // {
@@ -151,8 +150,8 @@ bool NetSession::ConnectToSession(const char *ip, Engine *eng, bool versionCheck
 
     if(contentChecking)
     {
-        if(connData.blockCount != eng->getContent()->indices->countBlockDefs())
-            return false;
+        // if(connData.blockCount != eng->getContent()->getBlockDefs().count)
+        //     return false;
 
         // for(std::string name : connData.blockNames)
         // {
@@ -181,31 +180,38 @@ void NetSession::ProcessPackage(NetPackage *pkg)
         NetMessage *msg = &pkg->messages[i]; 
         switch(msg->action)
         {
-            case NetAction::SERVER_UPDATE:
-                serverUpdate = true;
-            break;
             case NetAction::MODIFY:
                 sharedLevel->chunks->set((int)msg->coordinates.x, (int)msg->coordinates.y, (int)msg->coordinates.z, msg->block, msg->states);
                 pkgToSend.msgCount -= 1; // some trash, need to fix it later
             break;
-            // case NetAction::FETCH:
-                // if(sesMode == NetMode::CLIENT)
-                // {
-                //     std::shared_ptr<Chunk> chunk = chunksQueue.at({msg->coordinates.x, msg->coordinates.z});
-                //     std::cout << chunk->decode(msg->data) << std::endl;
-                //     chunk->setLoaded(true);
-                // }
-                // else if(sesMode == NetMode::PLAY_SERVER)
-                // {
-                //     ubyte *data = ServerGetChunk((int)msg->coordinates.x, (int)msg->coordinates.z);
-                //     NetMessage fm = NetMessage();
-                //     fm.action = NetAction::FETCH;
-                //     fm.coordinates.x = msg->coordinates.x;
-                //     fm.coordinates.z = msg->coordinates.z;
-                //     fm.data = data;
-                //     RegisterMessage(fm);
-                // }
-            // break;
+            case NetAction::FETCH:
+                if(sesMode == NetMode::CLIENT)
+                {
+                    std::shared_ptr<Chunk> chunk = chunksQueue.at({msg->coordinates.x, msg->coordinates.z});
+                    chunksQueue.erase({msg->coordinates.x, msg->coordinates.z});
+
+                    if(msg->data)
+                    {
+                        chunk->decode(msg->data);
+                        // chunk->setLoaded(true);
+                    }
+                }
+                else if(sesMode == NetMode::PLAY_SERVER)
+                {
+                    ubyte *data = ServerGetChunk((int)msg->coordinates.x, (int)msg->coordinates.z);
+
+                    if(data)
+                    {
+                        NetMessage fm = NetMessage();
+                        fm.action = NetAction::FETCH;
+                        fm.coordinates.x = msg->coordinates.x;
+                        fm.coordinates.z = msg->coordinates.z;
+                        fm.data = data;
+
+                        RegisterMessage(fm);
+                    }
+                }
+            break;
         }
     }
 }
@@ -227,10 +233,6 @@ void NetSession::ServerRoutine()
         }
 
         NetPackage servPkg = NetPackage();
-        // NetMessage upd = NetMessage();
-        // upd.action = NetAction::SERVER_UPDATE;
-        // servPkg.messages[0] = upd;
-        // servPkg.msgCount = 1;
         for(int i = 0; i - 1 < pkgToSend.msgCount; i++)
         {
             servPkg.messages[i] = pkgToSend.messages[i - 1];
@@ -272,13 +274,13 @@ void NetSession::ClientRoutine()
 
 void NetSession::ClientFetchChunk(std::shared_ptr<Chunk> chunk, uint& x, uint& z)
 {
-    // chunksQueue.insert_or_assign({x, z}, chunk);
+    chunksQueue.insert_or_assign({x, z}, chunk);
 
-    // NetMessage fm = NetMessage();
-    // fm.action = NetAction::FETCH;
-    // fm.coordinates.x = x;
-    // fm.coordinates.z = z;
-    // RegisterMessage(fm);
+    NetMessage fm = NetMessage();
+    fm.action = NetAction::FETCH;
+    fm.coordinates.x = x;
+    fm.coordinates.z = z;
+    RegisterMessage(fm);
 }
 
 ubyte *NetSession::ServerGetChunk(int x, int z)
@@ -287,13 +289,13 @@ ubyte *NetSession::ServerGetChunk(int x, int z)
 
     if(chunk)
     {
-        ubyte *buffer = new ubyte[CHUNK_DATA_LEN];
-        std::cout << chunk.get()->decode(buffer) << std::endl;
+        ubyte *buffer = chunk->encode();
         return buffer;
     }
     else
     {
         // TODO: generate the chunk
+        std::cout << "no such chunk\n";
         return nullptr;
     }
 }
@@ -310,7 +312,7 @@ void NetSession::Update(float delta) noexcept
     switch(sesMode)
     {
         case NetMode::PLAY_SERVER:
-                ServerRoutine();
+            ServerRoutine();
         break;
         case NetMode::CLIENT:
             ClientRoutine();

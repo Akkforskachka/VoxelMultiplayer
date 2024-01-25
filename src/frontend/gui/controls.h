@@ -6,6 +6,7 @@
 #include <vector>
 #include <functional>
 #include <glm/glm.hpp>
+#include "GUI.h"
 #include "UINode.h"
 #include "panels.h"
 #include "../../window/input.h"
@@ -22,6 +23,8 @@ namespace gui {
 
     typedef std::function<bool()> boolsupplier;
     typedef std::function<void(bool)> boolconsumer;
+
+    typedef std::function<bool(const std::wstring&)> wstringchecker;
 
     class Label : public UINode {
     protected:
@@ -40,6 +43,15 @@ namespace gui {
         virtual void size(glm::vec2 size) override;
     };
 
+    class Image : public UINode {
+    protected:
+        std::string texture;
+    public:
+        Image(std::string texture, glm::vec2 size);
+
+        virtual void draw(Batch2D* batch, Assets* assets) override;
+    };
+
     class Button : public Panel {
     protected:
         glm::vec4 hoverColor {0.05f, 0.1f, 0.15f, 0.75f};
@@ -52,7 +64,7 @@ namespace gui {
                glm::vec4 padding=glm::vec4(2.0f), 
                glm::vec4 margin=glm::vec4(1.0f));
 
-        virtual void drawBackground(Batch2D* batch, Assets* assets);
+        virtual void drawBackground(Batch2D* batch, Assets* assets) override;
 
         virtual std::shared_ptr<UINode> getAt(glm::vec2 pos, std::shared_ptr<UINode> self) override;
 
@@ -65,17 +77,39 @@ namespace gui {
         virtual std::wstring text() const;
 
         virtual Button* textSupplier(wstringsupplier supplier);
+
+        virtual void setHoverColor(glm::vec4 color);
+    };
+
+    class RichButton : public Container {
+    protected:
+        glm::vec4 hoverColor {0.05f, 0.1f, 0.15f, 0.75f};
+        glm::vec4 pressedColor {0.0f, 0.0f, 0.0f, 0.95f};
+        std::vector<onaction> actions;
+    public:
+        RichButton(glm::vec2 size);
+
+        virtual void drawBackground(Batch2D* batch, Assets* assets) override;
+
+        virtual void mouseRelease(GUI*, int x, int y) override;
+        virtual RichButton* listenAction(onaction action);
+
+        virtual void setHoverColor(glm::vec4 color);
     };
 
     class TextBox : public Panel {
     protected:
         glm::vec4 hoverColor {0.05f, 0.1f, 0.2f, 0.75f};
         glm::vec4 focusedColor {0.0f, 0.0f, 0.0f, 1.0f};
+        glm::vec4 invalidColor {0.1f, 0.05f, 0.03f, 1.0f};
         Label* label;
         std::wstring input;
         std::wstring placeholder;
         wstringsupplier supplier = nullptr;
         wstringconsumer consumer = nullptr;
+        wstringchecker validator = nullptr;
+        runnable onEditStart = nullptr;
+        bool valid = true;
     public:
         TextBox(std::wstring placeholder, 
                 glm::vec4 padding=glm::vec4(2.0f));
@@ -87,8 +121,15 @@ namespace gui {
         virtual void keyPressed(int key) override;
         virtual void textSupplier(wstringsupplier supplier);
         virtual void textConsumer(wstringconsumer consumer);
+        virtual void textValidator(wstringchecker validator);
         virtual bool isfocuskeeper() const override {return true;}
         virtual std::wstring text() const;
+        virtual void text(std::wstring value);
+        virtual bool validate();
+        virtual void setValid(bool valid);
+        virtual bool isValid() const;
+        virtual void setOnEditStart(runnable oneditstart);
+        virtual void focus(GUI*) override;
     };
 
     class InputBindBox : public Panel {
@@ -155,6 +196,29 @@ namespace gui {
             if (supplier_)
                 return supplier_();
             return checked_;
+        }
+    };
+
+    class FullCheckBox : public Panel {
+    protected:
+        std::shared_ptr<CheckBox> checkbox;
+    public:
+        FullCheckBox(std::wstring text, glm::vec2 size, bool checked=false);
+
+        virtual void supplier(boolsupplier supplier) {
+            checkbox->supplier(supplier);
+        }
+
+        virtual void consumer(boolconsumer consumer) {
+            checkbox->consumer(consumer);
+        }
+
+        virtual void checked(bool flag) {
+            checkbox->checked(flag);
+        }
+
+        virtual bool checked() const {
+            return checkbox->checked();
         }
     };
 }

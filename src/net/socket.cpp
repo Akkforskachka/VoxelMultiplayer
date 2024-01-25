@@ -4,6 +4,7 @@
 #include <iostream>
 #include "../coders/json.h"
 #include "netuser.h"
+#include "../voxels/Chunk.h"
 
 bool Socket::StartupServer(const int port)
 {
@@ -134,7 +135,7 @@ bool Socket::UpdateClient()
 
 void Socket::Deserialize(const char *buff)
 {
-    json::JObject *pckg;
+    std::unique_ptr<dynamic::Map> pckg;
 
     try
     {
@@ -152,32 +153,34 @@ void Socket::Deserialize(const char *buff)
         int mCount = 0;
         if(pckg->has("count"))
         {
-            mCount = pckg->getInteger("count", 0);
+            pckg->num("count", mCount);
         }
         if(pckg->has("messages"))
         {
-            json::JArray *msgs = pckg->arr("messages");
+            dynamic::List *msgs = pckg->list("messages");
             NetMessage stmsg = NetMessage();
             for(int i = 0; i < mCount; i++)
             {
-                json::JObject *messg = msgs->obj(i); 
+                dynamic::Map *messg = msgs->map(i); 
                 stmsg.usr_id = 0;
                 if(messg->has("action"))
                 {
-                    stmsg.action = (NetAction) messg->getInteger("action", 0);
+                    int act;
+                    messg->num("action", act);
+                    stmsg.action = (NetAction) act;
                 }
                 if(messg->has("block"))
                 {
-                    stmsg.block = messg->getInteger("block", -1);
+                    messg->num("block", stmsg.block);
                 }
                 if(messg->has("coordinates"))
                 {
-                    json::JArray *cord = messg->arr("coordinates");
+                    dynamic::List *cord = messg->list("coordinates");
                     if(cord->size() == 3)
                     {
-                        stmsg.coordinates.x = cord->integer(0);
-                        stmsg.coordinates.y = cord->integer(1);
-                        stmsg.coordinates.z = cord->integer(2);
+                        stmsg.coordinates.x = cord->num(0);
+                        stmsg.coordinates.y = cord->num(1);
+                        stmsg.coordinates.z = cord->num(2);
                     }
                 }
                 if(messg->has("data"))
@@ -235,15 +238,15 @@ bool Socket::SendPackage(NetPackage *pckg, socketfd sock)
 {
     // Serialize package and send it
     
-    json::JObject spk = json::JObject();
-    json::JArray& smgs = spk.putArray("messages");
+    dynamic::Map spk = dynamic::Map();
+    dynamic::List& smgs = spk.putList("messages");
 
     for(int i = 0; i < pckg->msgCount; i++)
     {
-        json::JObject& msg = smgs.putObj();
+        dynamic::Map& msg = smgs.putMap();
         msg.put("usr_id", pckg->messages[i].usr_id);
         msg.put("action", pckg->messages[i].action);
-        json::JArray& p = msg.putArray("coordinates");
+        dynamic::List& p = msg.putList("coordinates");
         switch(pckg->messages[i].action)
         {
             case NetAction::MODIFY:
@@ -253,13 +256,13 @@ bool Socket::SendPackage(NetPackage *pckg, socketfd sock)
                 p.put(pckg->messages[i].coordinates.z);
                 msg.put("states", pckg->messages[i].states);
             break;
-            // case NetAction::FETCH:
-            //     p.put(pckg->messages[i].coordinates.x);
-            //     p.put(pckg->messages[i].coordinates.y);
-            //     p.put(pckg->messages[i].coordinates.z);
-            //     if(pckg->messages[i].data)
-            //         msg.put("data", pckg->messages[i].data);
-            // break;
+            case NetAction::FETCH:
+                p.put(pckg->messages[i].coordinates.x);
+                p.put(pckg->messages[i].coordinates.y);
+                p.put(pckg->messages[i].coordinates.z);
+                if(pckg->messages[i].data)
+                    msg.put("data", std::string((const char *)pckg->messages[i].data, CHUNK_DATA_LEN));
+            break;
         }
     }
     spk.put("count", pckg->msgCount);

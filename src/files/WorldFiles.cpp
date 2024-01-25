@@ -1,7 +1,6 @@
 #include "WorldFiles.h"
 
 #include "rle.h"
-#include "binary_io.h"
 #include "../window/Camera.h"
 #include "../content/Content.h"
 #include "../objects/Player.h"
@@ -17,14 +16,36 @@
 #include "../util/data_io.h"
 #include "../coders/json.h"
 #include "../constants.h"
+#include "../items/ItemDef.h"
+#include "../items/Inventory.h"
+
+#include "../data/dynamic.h"
 
 #include <cassert>
 #include <iostream>
 #include <cstdint>
 #include <fstream>
 #include <sstream>
+#include <cstring>
 
 namespace fs = std::filesystem;
+
+regfile::regfile(fs::path filename) : file(filename) {
+    if (file.length() < REGION_HEADER_SIZE)
+        throw std::runtime_error("incomplete region file header");
+    char header[REGION_HEADER_SIZE];
+    file.read(header, REGION_HEADER_SIZE);
+    
+    // avoid of use strcmp_s
+    if (std::string(header, strlen(REGION_FORMAT_MAGIC)) != REGION_FORMAT_MAGIC) {
+        throw std::runtime_error("invalid region file magic number");
+    }
+    version = header[8];
+    if (uint(version) > REGION_FORMAT_VERSION) {
+        throw illegal_region_format(
+            "region format "+std::to_string(version)+" is not supported");
+    }
+}
 
 WorldRegion::WorldRegion() {
 	chunksData = new ubyte*[REGION_CHUNKS_COUNT]{};
@@ -73,12 +94,10 @@ WorldFiles::WorldFiles(fs::path directory, const DebugSettings& settings)
 	: directory(directory), 
 	  generatorTestMode(settings.generatorTestMode),
 	  doWriteLights(settings.doWriteLights) {
-	compressionBuffer = new ubyte[CHUNK_DATA_LEN * 2];
+	compressionBuffer.reset(new ubyte[CHUNK_DATA_LEN * 2]);
 }
 
 WorldFiles::~WorldFiles(){
-	delete[] compressionBuffer;
-	regions.clear();
 }
 
 WorldRegion* WorldFiles::getRegion(regionsmap& regions, int x, int z) {
@@ -98,10 +117,12 @@ WorldRegion* WorldFiles::getOrCreateRegion(regionsmap& regions, int x, int z) {
 }
 
 ubyte* WorldFiles::compress(const ubyte* src, size_t srclen, size_t& len) {
-	len = extrle::encode(src, srclen, compressionBuffer);
+    ubyte* buffer = this->compressionBuffer.get();
+    
+	len = extrle::encode(src, srclen, buffer);
 	ubyte* data = new ubyte[len];
 	for (size_t i = 0; i < len; i++) {
-		data[i] = compressionBuffer[i];
+		data[i] = buffer[i];
 	}
 	return data;
 }
@@ -110,6 +131,31 @@ ubyte* WorldFiles::decompress(const ubyte* src, size_t srclen, size_t dstlen) {
 	ubyte* decompressed = new ubyte[dstlen];
 	extrle::decode(src, srclen, decompressed);
 	return decompressed;
+}
+
+int WorldFiles::getVoxelRegionVersion(int x, int z) {
+    regfile* rf = getRegFile(glm::ivec3(x, z, REGION_LAYER_VOXELS), getRegionsFolder());
+    if (rf == nullptr) {
+        return 0;
+    }
+    return rf->version;
+}
+
+int WorldFiles::getVoxelRegionsVersion() {
+    fs::path regionsFolder = getRegionsFolder();
+    if (!fs::is_directory(regionsFolder)) {
+        return REGION_FORMAT_VERSION;
+    }
+    for (auto file : fs::directory_iterator(regionsFolder)) {
+        int x;
+        int z;
+        if (!parseRegionFilename(file.path().stem().string(), x, z)) {
+            continue;
+        }
+        regfile* rf = getRegFile(glm::ivec3(x, z, REGION_LAYER_VOXELS), regionsFolder);
+        return rf->version;
+    }
+    return REGION_FORMAT_VERSION;
 }
 
 /* 
@@ -172,8 +218,7 @@ fs::path WorldFiles::getLightsFolder() const {
 }
 
 fs::path WorldFiles::getRegionFilename(int x, int z) const {
-	std::string filename = std::to_string(x) + "_" + std::to_string(z) + ".bin";
-	return fs::path(filename);
+	return fs::path(std::to_string(x) + "_" + std::to_string(z) + ".bin");
 }
 
 /* 
@@ -236,7 +281,6 @@ ubyte* WorldFiles::getData(regionsmap& regions, const fs::path& folder,
 	int localZ = z - (regionZ * REGION_SIZE);
 
 	WorldRegion* region = getOrCreateRegion(regions, regionX, regionZ);
-
 	ubyte* data = region->getChunkData(localX, localZ);
 	if (data == nullptr) {
 		uint32_t size;
@@ -252,7 +296,8 @@ ubyte* WorldFiles::getData(regionsmap& regions, const fs::path& folder,
 	return nullptr;
 }
 
-files::rafile* WorldFiles::getRegFile(glm::ivec3 coord, const fs::path& folder) {
+
+regfile* WorldFiles::getRegFile(glm::ivec3 coord, const fs::path& folder) {
     const auto found = openRegFiles.find(coord);
     if (found != openRegFiles.end()) {
         return found->second.get();
@@ -266,7 +311,7 @@ files::rafile* WorldFiles::getRegFile(glm::ivec3 coord, const fs::path& folder) 
     if (!fs::is_regular_file(filename)) {
         return nullptr;
     }
-    openRegFiles[coord] = std::make_unique<files::rafile>(filename);
+    openRegFiles[coord] = std::make_unique<regfile>(filename);
     return openRegFiles[coord].get();
 }
 
@@ -285,26 +330,27 @@ ubyte* WorldFiles::readChunkData(int x,
 	int chunkIndex = localZ * REGION_SIZE + localX;
  
     glm::ivec3 coord(regionX, regionZ, layer);
-    files::rafile* file = WorldFiles::getRegFile(coord, folder);
-    if (file == nullptr) {
+    regfile* rfile = WorldFiles::getRegFile(coord, folder);
+    if (rfile == nullptr) {
         return nullptr;
     }
+    files::rafile& file = rfile->file;
 
-	size_t file_size = file->length();
+	size_t file_size = file.length();
 	size_t table_offset = file_size - REGION_CHUNKS_COUNT * 4;
 
 	uint32_t offset;
-	file->seekg(table_offset + chunkIndex * 4);
-	file->read((char*)(&offset), 4);
+	file.seekg(table_offset + chunkIndex * 4);
+	file.read((char*)(&offset), 4);
 	offset = dataio::read_int32_big((const ubyte*)(&offset), 0);
 	if (offset == 0){
 		return nullptr;
 	}
-	file->seekg(offset);
-	file->read((char*)(&offset), 4);
+	file.seekg(offset);
+	file.read((char*)(&offset), 4);
 	length = dataio::read_int32_big((const ubyte*)(&offset), 0);
 	ubyte* data = new ubyte[length];
-	file->read((char*)data, length);
+	file.read((char*)data, length);
 	if (data == nullptr) {
 		std::cerr << "ERROR: failed to read data of chunk x("<< x <<"), z("<< z <<")" << std::endl;
 	}
@@ -343,13 +389,13 @@ void WorldFiles::writeRegion(int x, int z, WorldRegion* entry, fs::path folder, 
         openRegFiles.erase(regcoord);
     }
     
-	char header[10] = REGION_FORMAT_MAGIC;
+	char header[REGION_HEADER_SIZE] = REGION_FORMAT_MAGIC;
 	header[8] = REGION_FORMAT_VERSION;
 	header[9] = 0; // flags
 	std::ofstream file(filename, std::ios::out | std::ios::binary);
-	file.write(header, 10);
+	file.write(header, REGION_HEADER_SIZE);
 
-	size_t offset = 10;
+	size_t offset = REGION_HEADER_SIZE;
 	char intbuf[4]{};
 	uint offsets[REGION_CHUNKS_COUNT]{};
 	
@@ -401,7 +447,7 @@ void WorldFiles::write(const World* world, const Content* content) {
 	if (generatorTestMode)
 		return;
 		
-	writeIndices(content->indices);
+	writeIndices(content->getIndices());
 	writeRegions(regions, regionsFolder, REGION_LAYER_VOXELS);
 	writeRegions(lights, lightsFolder, REGION_LAYER_LIGHTS);
 }
@@ -417,31 +463,41 @@ void WorldFiles::writePacks(const World* world) {
 }
 
 void WorldFiles::writeIndices(const ContentIndices* indices) {
-	json::JObject root;
-	json::JArray& blocks = root.putArray("blocks");
-	uint count = indices->countBlockDefs();
+	dynamic::Map root;
+    uint count;
+	auto& blocks = root.putList("blocks");
+	count = indices->countBlockDefs();
 	for (uint i = 0; i < count; i++) {
 		const Block* def = indices->getBlockDef(i);
 		blocks.put(def->name);
 	}
-	files::write_string(getIndicesFile(), json::stringify(&root, true, "  "));
+
+    auto& items = root.putList("items");
+	count = indices->countItemDefs();
+	for (uint i = 0; i < count; i++) {
+		const ItemDef* def = indices->getItemDef(i);
+		items.put(def->name);
+	}
+
+	files::write_json(getIndicesFile(), &root);
 }
 
 void WorldFiles::writeWorldInfo(const World* world) {
-	json::JObject root;
+	dynamic::Map root;
 
-	json::JObject& versionobj = root.putObj("version");
+	auto& versionobj = root.putMap("version");
 	versionobj.put("major", ENGINE_VERSION_MAJOR);
 	versionobj.put("minor", ENGINE_VERSION_MINOR);
 
-	root.put("name", world->name);
-	root.put("seed", world->seed);
+	root.put("name", world->getName());
+	root.put("seed", world->getSeed());
 	
-	json::JObject& timeobj = root.putObj("time");
+    auto& timeobj = root.putMap("time");
 	timeobj.put("day-time", world->daytime);
 	timeobj.put("day-time-speed", world->daytimeSpeed);
+    timeobj.put("total-time", world->totalTime);
 
-	files::write_string(getWorldFile(), json::stringify(&root, true, "  "));
+	files::write_json(getWorldFile(), &root);
 }
 
 bool WorldFiles::readWorldInfo(World* world) {
@@ -451,11 +507,12 @@ bool WorldFiles::readWorldInfo(World* world) {
 		return false;
 	}
 
-	std::unique_ptr<json::JObject> root(files::read_json(file));
-	root->str("name", world->name);
-	root->num("seed", world->seed);
+	auto root = files::read_json(file);
+    
+    world->setName(root->getStr("name", world->getName()));
+    world->setSeed(root->getInt("seed", world->getSeed()));
 
-	json::JObject* verobj = root->obj("version");
+	auto verobj = root->map("version");
 	if (verobj) {
 		int major=0, minor=-1;
 		verobj->num("major", major);
@@ -463,31 +520,40 @@ bool WorldFiles::readWorldInfo(World* world) {
 		std::cout << "world version: " << major << "." << minor << std::endl;
 	}
 
-	json::JObject* timeobj = root->obj("time");
+	auto timeobj = root->map("time");
 	if (timeobj) {
 		timeobj->num("day-time", world->daytime);
 		timeobj->num("day-time-speed", world->daytimeSpeed);
+        timeobj->num("total-time", world->totalTime);
 	}
 
 	return true;
 }
 
-void WorldFiles::writePlayer(Player* player){
+void WorldFiles::writePlayer(Player* player) {
 	glm::vec3 position = player->hitbox->position;
-	json::JObject root;
-	json::JArray& posarr = root.putArray("position");
+	dynamic::Map root;
+	auto& posarr = root.putList("position");
 	posarr.put(position.x);
 	posarr.put(position.y);
 	posarr.put(position.z);
 
-	json::JArray& rotarr = root.putArray("rotation");
+	auto& rotarr = root.putList("rotation");
 	rotarr.put(player->cam.x);
 	rotarr.put(player->cam.y);
-	
+
+	auto& sparr = root.putList("spawnpoint");
+	glm::vec3 spawnpoint = player->getSpawnPoint();
+	sparr.put(spawnpoint.x);
+	sparr.put(spawnpoint.y);
+	sparr.put(spawnpoint.z);
+
 	root.put("flight", player->flight);
 	root.put("noclip", player->noclip);
+    root.put("chosen-slot", player->getChosenSlot());
+    root.put("inventory", player->getInventory()->write().release());
 
-	files::write_string(getPlayerFile(), json::stringify(&root, true, "  "));
+	files::write_json(getPlayerFile(), &root);
 }
 
 bool WorldFiles::readPlayer(Player* player) {
@@ -497,19 +563,36 @@ bool WorldFiles::readPlayer(Player* player) {
 		return false;
 	}
 
-	std::unique_ptr<json::JObject> root(files::read_json(file));
-	json::JArray* posarr = root->arr("position");
+	auto root = files::read_json(file);
+	auto posarr = root->list("position");
 	glm::vec3& position = player->hitbox->position;
 	position.x = posarr->num(0);
 	position.y = posarr->num(1);
 	position.z = posarr->num(2);
 	player->camera->position = position;
 
-	json::JArray* rotarr = root->arr("rotation");
+	auto rotarr = root->list("rotation");
 	player->cam.x = rotarr->num(0);
 	player->cam.y = rotarr->num(1);
 
+	if (root->has("spawnpoint")) {
+		auto sparr = root->list("spawnpoint");
+		player->setSpawnPoint(glm::vec3(
+			sparr->num(0),
+			sparr->num(1),
+			sparr->num(2)
+		));
+	} else {
+		player->setSpawnPoint(position);
+	}
+
 	root->flag("flight", player->flight);
 	root->flag("noclip", player->noclip);
+    player->setChosenSlot(root->getInt("chosen-slot", player->getChosenSlot()));
+
+    auto invmap = root->map("inventory");
+    if (invmap) {
+        player->getInventory()->read(invmap);
+    }
 	return true;
 }

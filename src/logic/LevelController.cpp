@@ -6,7 +6,6 @@
 #include "ChunksController.h"
 
 #include "scripting/scripting.h"
-#include "../net/netsession.h"
 
 LevelController::LevelController(EngineSettings& settings, Level* level) 
     : settings(settings), level(level) {
@@ -14,12 +13,11 @@ LevelController::LevelController(EngineSettings& settings, Level* level)
     chunks = std::make_unique<ChunksController>(level, settings.chunks.padding);
     player = std::make_unique<PlayerController>(level, settings, blocks.get());
 
-    scripting::on_world_load(level);
+    scripting::on_world_load(level, blocks.get());
 }
 
 LevelController::~LevelController() {
     scripting::on_world_quit();
-	NetSession::TerminateSession();
 }
 
 void LevelController::update(float delta, bool input, bool pause) {
@@ -27,5 +25,4 @@ void LevelController::update(float delta, bool input, bool pause) {
     level->update();
     chunks->update(settings.chunks.loadSpeed);
     blocks->update(delta);
-    NetSession::NetUpdate(delta);
 }

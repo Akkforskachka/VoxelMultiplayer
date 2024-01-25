@@ -15,12 +15,13 @@
 #include "../typedefs.h"
 #include "../settings.h"
 
+const uint REGION_HEADER_SIZE = 10;
 const uint REGION_LAYER_VOXELS = 0;
 const uint REGION_LAYER_LIGHTS = 1;
 const uint REGION_SIZE_BIT = 5;
 const uint REGION_SIZE = (1 << (REGION_SIZE_BIT));
 const uint REGION_CHUNKS_COUNT = ((REGION_SIZE) * (REGION_SIZE));
-const uint REGION_FORMAT_VERSION = 1;
+const uint REGION_FORMAT_VERSION = 2;
 const uint WORLD_FORMAT_VERSION = 1;
 const uint MAX_OPEN_REGION_FILES = 16;
 
@@ -32,6 +33,14 @@ class Chunk;
 class Content;
 class ContentIndices;
 class World;
+
+namespace fs = std::filesystem;
+
+class illegal_region_format : public std::runtime_error {
+public:
+    illegal_region_format(const std::string& message) 
+    : std::runtime_error(message) {}
+};
 
 class WorldRegion {
 	ubyte** chunksData;
@@ -52,24 +61,28 @@ public:
 	uint32_t* getSizes() const;
 };
 
+struct regfile {
+    files::rafile file;
+    int version;
+
+    regfile(fs::path filename);
+};
+
 typedef std::unordered_map<glm::ivec2, std::unique_ptr<WorldRegion>> regionsmap;
+
 class WorldFiles {
-    std::unordered_map<glm::ivec3, std::unique_ptr<files::rafile>> openRegFiles;
+    std::unordered_map<glm::ivec3, std::unique_ptr<regfile>> openRegFiles;
 
 	void writeWorldInfo(const World* world);
-	std::filesystem::path getLightsFolder() const;
-	std::filesystem::path getRegionFilename(int x, int y) const;
-	std::filesystem::path getPlayerFile() const;
-	std::filesystem::path getWorldFile() const;
-	std::filesystem::path getIndicesFile() const;
-	std::filesystem::path getPacksFile() const;
+	fs::path getLightsFolder() const;
+	fs::path getRegionFilename(int x, int y) const;
+	fs::path getPlayerFile() const;
+	fs::path getWorldFile() const;
+	fs::path getIndicesFile() const;
+	fs::path getPacksFile() const;
 	
-	WorldRegion* getRegion(regionsmap& regions,
-						   int x, int z);
-
-	WorldRegion* getOrCreateRegion(
-						   regionsmap& regions,
-						   int x, int z);
+	WorldRegion* getRegion(regionsmap& regions, int x, int z);
+	WorldRegion* getOrCreateRegion(regionsmap& regions, int x, int z);
 
 	/* Compress buffer with extrle
 	   @param src source buffer
@@ -80,42 +93,43 @@ class WorldFiles {
 	/* Decompress buffer with extrle
 	   @param src compressed buffer
 	   @param srclen length of compressed buffer
-	   @param dstlen max expected length of source buffer
-	*/
+	   @param dstlen max expected length of source buffer */
 	ubyte* decompress(const ubyte* src, size_t srclen, size_t dstlen);
 
 	ubyte* readChunkData(int x, int y, 
 						 uint32_t& length, 
-						 std::filesystem::path folder,
+						 fs::path folder,
                          int layer);
     void fetchChunks(WorldRegion* region, int x, int y, 
-                     std::filesystem::path folder, int layer);
+                     fs::path folder, int layer);
 
 	void writeRegions(regionsmap& regions,
-					  const std::filesystem::path& folder, int layer);
+					  const fs::path& folder, int layer);
 
 	ubyte* getData(regionsmap& regions,
-				   const std::filesystem::path& folder,
+				   const fs::path& folder,
 				   int x, int z, int layer);
     
-    files::rafile* getRegFile(glm::ivec3 coord,
-                              const std::filesystem::path& folder);
+    regfile* getRegFile(glm::ivec3 coord, const fs::path& folder);
 public:
     static bool parseRegionFilename(const std::string& name, int& x, int& y);
-    std::filesystem::path getRegionsFolder() const;
+    fs::path getRegionsFolder() const;
 
 	regionsmap regions;
 	regionsmap lights;
-	std::filesystem::path directory;
-	ubyte* compressionBuffer;
+	fs::path directory;
+	std::unique_ptr<ubyte[]> compressionBuffer;
 	bool generatorTestMode;
 	bool doWriteLights;
 
-	WorldFiles(std::filesystem::path directory, const DebugSettings& settings);
+	WorldFiles(fs::path directory, const DebugSettings& settings);
 	~WorldFiles();
 
 	void put(Chunk* chunk);
     void put(int x, int z, const ubyte* voxelData);
+
+    int getVoxelRegionVersion(int x, int z);
+    int getVoxelRegionsVersion();
 
 	ubyte* getChunk(int x, int z);
 	light_t* getLights(int x, int z);
@@ -125,7 +139,7 @@ public:
 
 	void writeRegion(int x, int y, 
 					 WorldRegion* entry, 
-					 std::filesystem::path file,
+					 fs::path file,
                      int layer);
 	void writePlayer(Player* player);
     /* @param world world info to save (nullable) */

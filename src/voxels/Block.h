@@ -2,10 +2,14 @@
 #define VOXELS_BLOCK_H_
 
 #include <string>
+#include <vector>
 #include <glm/glm.hpp>
+#include "../graphics/UVRegion.h"
 
 #include "../maths/aabb.h"
 #include "../typedefs.h"
+
+#define BLOCK_ITEM_SUFFIX ".item"
 
 const uint FACE_MX = 0;
 const uint FACE_PX = 1;
@@ -23,6 +27,7 @@ struct block_funcs_set {
     bool onbroken: 1;
     bool oninteract: 1;
     bool randupdate: 1;
+    bool onblockstick: 1;
 };
 
 struct CoordSystem {
@@ -47,7 +52,7 @@ struct CoordSystem {
 };
 
 struct BlockRotProfile {
-	static const int MAX_COUNT = 16;
+	static const int MAX_COUNT = 8;
 	std::string name;
 	CoordSystem variants[MAX_COUNT];
 
@@ -61,16 +66,23 @@ enum class BlockModel {
 	none, // invisible 
 	block, // default shape
 	xsprite, // X-shape (grass)
-	aabb // box shaped as block hitbox
+	aabb, // box shaped as block hitbox
+	custom
 };
+
+using BoxModel = AABB;
 
 class Block {
 public:
 	std::string const name;
-						               //  0 1   2 3   4 5
+	                             //  0 1   2 3   4 5
 	std::string textureFaces[6]; // -x,x, -y,y, -z,z
-	unsigned char emission[4] {0, 0, 0, 0};
-	unsigned char drawGroup = 0;
+	std::vector<std::string> modelTextures = {};
+	std::vector<BoxModel> modelBoxes = {};
+	std::vector<glm::vec3> modelExtraPoints = {}; //initially made for tetragons
+	std::vector<UVRegion> modelUVs = {}; // boxes' tex-UVs also there
+	uint8_t emission[4] {0, 0, 0, 0};
+	ubyte drawGroup = 0;
 	BlockModel model = BlockModel::block;
 	bool lightPassing = false;
 	bool skyLightPassing = false;
@@ -83,6 +95,8 @@ public:
     bool hidden = false;
 	AABB hitbox;
 	BlockRotProfile rotations;
+    std::string pickingItem = name+BLOCK_ITEM_SUFFIX;
+    std::string scriptName = name.substr(name.find(':')+1);
 
 	struct {
 		blockid_t id;
@@ -90,6 +104,7 @@ public:
 		bool emissive = false;
 		AABB hitboxes[BlockRotProfile::MAX_COUNT];
 		block_funcs_set funcsset {};
+        itemid_t pickingItem = 0;
 	} rt;
 
 	Block(std::string name);

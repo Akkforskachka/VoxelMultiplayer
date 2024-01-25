@@ -38,8 +38,7 @@ enum NetUserRole
 enum NetAction
 {
     UNKOWN,
-    // FETCH,
-    SERVER_UPDATE,
+    FETCH,
     MODIFY,
 };
 

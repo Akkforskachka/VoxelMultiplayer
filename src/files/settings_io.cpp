@@ -9,7 +9,7 @@
 #include "../coders/toml.h"
 #include "../coders/json.h"
 
-using std::string;
+#include "../data/dynamic.h"
 
 toml::Wrapper* create_wrapper(EngineSettings& settings) {
 	std::unique_ptr<toml::Wrapper> wrapper (new toml::Wrapper());
@@ -47,33 +47,32 @@ toml::Wrapper* create_wrapper(EngineSettings& settings) {
 	return wrapper.release();
 }
 
-string write_controls() {
-	json::JObject* obj = new json::JObject();
+std::string write_controls() {
+	dynamic::Map obj;
 	for (auto& entry : Events::bindings) {
 		const auto& binding = entry.second;
 
-		json::JObject* jentry = new json::JObject();
+        auto& jentry = obj.putMap(entry.first);
 		switch (binding.type) {
-			case inputtype::keyboard: jentry->put("type", "keyboard"); break;
-			case inputtype::mouse: jentry->put("type", "mouse"); break;
+			case inputtype::keyboard: jentry.put("type", "keyboard"); break;
+			case inputtype::mouse: jentry.put("type", "mouse"); break;
 			default: throw std::runtime_error("unsupported control type");
 		}
-		jentry->put("code", binding.code);
-		obj->put(entry.first, jentry);
+		jentry.put("code", binding.code);
 	}
-	return json::stringify(obj, true, "  ");
+	return json::stringify(&obj, true, "  ");
 }
 
-void load_controls(string filename, string source) {
-	json::JObject* obj = json::parse(filename, source);
+void load_controls(std::string filename, std::string source) {
+    auto obj = json::parse(filename, source);
 	for (auto& entry : Events::bindings) {
 		auto& binding = entry.second;
 
-		json::JObject* jentry = obj->obj(entry.first);
+		auto jentry = obj->map(entry.first);
 		if (jentry == nullptr)
 			continue;
 		inputtype type;
-		string typestr;
+		std::string typestr;
 		jentry->str("type", typestr);
 
 		if (typestr == "keyboard") {

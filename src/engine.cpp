@@ -46,7 +46,7 @@ Engine::Engine(EngineSettings& settings, EnginePaths* paths)
 	}
 
     auto resdir = paths->getResources();
-    scripting::initialize(paths);
+    scripting::initialize(this);
 
 	std::cout << "-- loading assets" << std::endl;
     std::vector<fs::path> roots {resdir};
@@ -66,7 +66,7 @@ Engine::Engine(EngineSettings& settings, EnginePaths* paths)
 	}
 
 	Audio::initialize();
-	gui = new gui::GUI();
+	gui = std::make_unique<gui::GUI>();
     if (settings.ui.language == "auto") {
         settings.ui.language = langs::locale_by_envlocale(platform::detect_locale(), paths->getResources());
     }
@@ -125,7 +125,6 @@ void Engine::mainloop() {
 Engine::~Engine() {
     scripting::close();
 	screen = nullptr;
-	delete gui;
 
 	Audio::finalize();
 
@@ -165,6 +164,13 @@ void Engine::loadContent() {
     assets->extend(*new_assets.get());
 }
 
+void Engine::loadWorldContent(const fs::path& folder) {
+    contentPacks.clear();
+    auto packNames = ContentPack::worldPacksList(folder);
+    ContentPack::readPacks(paths, contentPacks, packNames, folder);
+    loadContent();
+}
+
 void Engine::loadAllPacks() {
 	auto resdir = paths->getResources();
 	contentPacks.clear();
@@ -182,7 +188,7 @@ void Engine::setLanguage(std::string locale) {
 }
 
 gui::GUI* Engine::getGUI() {
-	return gui;
+	return gui.get();
 }
 
 EngineSettings& Engine::getSettings() {

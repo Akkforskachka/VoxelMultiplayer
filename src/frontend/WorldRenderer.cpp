@@ -27,7 +27,10 @@
 #include "../maths/voxmaths.h"
 #include "../settings.h"
 #include "../engine.h"
-#include "ContentGfxCache.h"
+#include "../items/ItemDef.h"
+#include "../items/ItemStack.h"
+#include "../items/Inventory.h"
+#include "LevelFrontend.h"
 #include "graphics/Skybox.h"
 
 using glm::vec3;
@@ -36,14 +39,14 @@ using glm::mat4;
 using std::string;
 using std::shared_ptr;
 
-WorldRenderer::WorldRenderer(Engine* engine, 
-							 Level* level, 
-							 const ContentGfxCache* cache) 
+WorldRenderer::WorldRenderer(Engine* engine, LevelFrontend* frontend) 
 	: engine(engine), 
-	  level(level),
+	  level(frontend->getLevel()),
 	  frustumCulling(new Frustum()),
 	  lineBatch(new LineBatch()),
-	  renderer( new ChunksRenderer(level, cache, engine->getSettings())) {
+	  renderer(new ChunksRenderer(level, 
+                frontend->getContentGfxCache(), 
+                engine->getSettings())) {
 
 	auto& settings = engine->getSettings();
 	level->events->listen(EVT_CHUNK_HIDDEN, 
@@ -125,13 +128,13 @@ void WorldRenderer::drawChunks(Chunks* chunks,
 }
 
 
-void WorldRenderer::draw(const GfxContext& pctx, Camera* camera){
+void WorldRenderer::draw(const GfxContext& pctx, Camera* camera, bool hudVisible){
 	EngineSettings& settings = engine->getSettings();
 	skybox->refresh(level->world->daytime, 
 					1.0f+fog*2.0f, 4);
 
 	const Content* content = level->content;
-	const ContentIndices* contentIds = content->indices;
+	auto indices = content->getIndices();
 	Assets* assets = engine->getAssets();
 	Atlas* atlas = assets->getAtlas("blocks");
 	Shader* shader = assets->getShader("main");
@@ -168,14 +171,16 @@ void WorldRenderer::draw(const GfxContext& pctx, Camera* camera){
 		shader->uniform3f("u_cameraPos", camera->position);
 		shader->uniform1i("u_cubemap", 1);
 		{
-			blockid_t id = level->player->chosenBlock;
-			Block* block = contentIds->getBlockDef(id);
-			assert(block != nullptr);
+            auto player = level->player;
+            auto inventory = player->getInventory();
+            ItemStack& stack = inventory->getSlot(player->getChosenSlot());
+            ItemDef* item = indices->getItemDef(stack.getItemId());
+			assert(item != nullptr);
 			float multiplier = 0.5f;
-			shader->uniform3f("u_torchlightColor",
-					block->emission[0] / 15.0f * multiplier,
-					block->emission[1] / 15.0f * multiplier,
-					block->emission[2] / 15.0f * multiplier);
+			shader->uniform3f("u_torchlightColor",  
+					item->emission[0] / 15.0f * multiplier,
+					item->emission[1] / 15.0f * multiplier,
+					item->emission[2] / 15.0f * multiplier);
 			shader->uniform1f("u_torchlightDistance", 6.0f);
 		}
 
@@ -186,9 +191,9 @@ void WorldRenderer::draw(const GfxContext& pctx, Camera* camera){
 		drawChunks(level->chunks, camera, shader);
 
 		// Selected block
-		if (PlayerController::selectedBlockId != -1){
+		if (PlayerController::selectedBlockId != -1 && hudVisible){
 			blockid_t id = PlayerController::selectedBlockId;
-			Block* block = contentIds->getBlockDef(id);
+			Block* block = indices->getBlockDef(id);
 			assert(block != nullptr);
 			const vec3 pos = PlayerController::selectedBlockPosition;
 			const vec3 point = PlayerController::selectedPointPosition;

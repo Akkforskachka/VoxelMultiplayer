@@ -12,6 +12,9 @@
 #include "../window/Camera.h"
 #include "../window/Events.h"
 #include "../window/input.h"
+#include "../items/ItemDef.h"
+#include "../items/ItemStack.h"
+#include "../items/Inventory.h"
 #include "scripting/scripting.h"
 #include "BlocksController.h"
 
@@ -31,7 +34,7 @@ const float CROUCH_SHIFT_Y = -0.2f;
 CameraControl::CameraControl(Player* player, const CameraSettings& settings) 
 	: player(player), 
 	  camera(player->camera), 
-	  currentViewCamera(player->currentViewCamera), //TODO "start view" settings (for custom worlds and minigames, maybe)
+	  currentViewCamera(player->currentCamera),
 	  settings(settings),
 	  offset(0.0f, 0.7f, 0.0f) {
 }
@@ -41,26 +44,30 @@ void CameraControl::refresh() {
 }
 
 void CameraControl::updateMouse(PlayerInput& input) {
-    glm::vec2 &cam = player->cam;
-    if (input.zoom) {
-        cam += -Events::delta / (float)Window::height * settings.sensitivity / 4.f;
-    } else {
-        cam += -Events::delta / (float)Window::height * settings.sensitivity;
-    }
+	glm::vec2& cam = player->cam;
 
-	if (cam.y < -glm::radians(89.9f)) {
-        cam.y = -glm::radians(89.9f);
+	float sensitivity = (input.zoom ? settings.sensitivity / 4.f : settings.sensitivity);
+	cam -= glm::degrees(Events::delta / (float)Window::height * sensitivity);
+
+	if (cam.y < -89.9f) {
+		cam.y = -89.9f;
 	}
-	if (cam.y > glm::radians(89.9f)) {
-        cam.y = glm::radians(89.9f);
+	else if (cam.y > 89.9f) {
+		cam.y = 89.9f;
+	}
+	if (cam.x > 180.f) {
+		cam.x -= 360.f;
+	}
+	else if (cam.x < -180.f) {
+		cam.x += 360.f;
 	}
 
 	camera->rotation = glm::mat4(1.0f);
-	camera->rotate(cam.y, cam.x, 0);
+	camera->rotate(glm::radians(cam.y), glm::radians(cam.x), 0);
 }
 
 void CameraControl::update(PlayerInput& input, float delta, Chunks* chunks) {
-	Hitbox* hitbox = player->hitbox;
+	Hitbox* hitbox = player->hitbox.get();
 
 	offset = glm::vec3(0.0f, 0.7f, 0.0f);
 
@@ -101,23 +108,26 @@ void CameraControl::update(PlayerInput& input, float delta, Chunks* chunks) {
 		camera->zoom = zoomValue * dt + camera->zoom * (1.0f - dt);
 	}
 
+    auto spCamera = player->spCamera;
+    auto tpCamera = player->tpCamera;
+
 	if (input.cameraMode) { //ugly but effective
-		if (player->currentViewCamera == camera)
-			player->currentViewCamera = player->SPCamera;
-		else if (player->currentViewCamera == player->SPCamera)
-			player->currentViewCamera = player->TPCamera;
-		else if (player->currentViewCamera == player->TPCamera)
-			player->currentViewCamera = camera;
+		if (player->currentCamera == camera)
+			player->currentCamera = tpCamera;
+		else if (player->currentCamera == spCamera)
+			player->currentCamera = camera;
+		else if (player->currentCamera == tpCamera)
+			player->currentCamera = spCamera;
 	}
-	if (player->currentViewCamera == player->SPCamera) {
-		player->SPCamera->position = chunks->rayCastToObstacle(camera->position, camera->front, 3.0f) - 0.2f*(camera->front);
-		player->SPCamera->dir = -camera->dir;
-		player->SPCamera->front = -camera->front;
+	if (player->currentCamera == spCamera) {
+		spCamera->position = chunks->rayCastToObstacle(camera->position, camera->front, 3.0f) - 0.2f*(camera->front);
+		spCamera->dir = -camera->dir;
+		spCamera->front = -camera->front;
 	}
-	else if (player->currentViewCamera == player->TPCamera) {
-		player->TPCamera->position = chunks->rayCastToObstacle(camera->position, -camera->front, 3.0f) + 0.2f * (camera->front);
-		player->TPCamera->dir = camera->dir;
-		player->TPCamera->front = camera->front;
+	else if (player->currentCamera == tpCamera) {
+		tpCamera->position = chunks->rayCastToObstacle(camera->position, -camera->front, 3.0f) + 0.2f * (camera->front);
+		tpCamera->dir = camera->dir;
+		tpCamera->front = camera->front;
 	}
 }
 
@@ -170,13 +180,6 @@ void PlayerController::updateKeyboard() {
 	input.cameraMode = Events::jactive(BIND_CAM_MODE);
 	input.noclip = Events::jactive(BIND_PLAYER_NOCLIP);
 	input.flight = Events::jactive(BIND_PLAYER_FLIGHT);
-
-	// block choice
-	for (int i = 1; i < 10; i++){
-		if (Events::jpressed(keycode::NUM_0+i)){
-			player->chosenBlock = i;
-		}
-	}
 }
 
 void PlayerController::updateCamera(float delta, bool movement) {
@@ -203,11 +206,11 @@ void PlayerController::updateControls(float delta){
 }
 
 void PlayerController::updateInteraction(){
-	auto contentIds = level->content->indices;
+	auto indices = level->content->getIndices();
 	Chunks* chunks = level->chunks;
 	Player* player = level->player;
 	Lighting* lighting = level->lighting;
-	Camera* camera = player->camera;
+	Camera* camera = player->camera.get();
 	glm::vec3 end;
 	glm::ivec3 iend;
 	glm::ivec3 norm;
@@ -238,8 +241,11 @@ void PlayerController::updateInteraction(){
 		int z = iend.z;
 		uint8_t states = 0;
 
-		Block* def = contentIds->getBlockDef(player->chosenBlock);
-		if (def->rotatable){
+        auto inventory = player->getInventory();
+        ItemStack& stack = inventory->getSlot(player->getChosenSlot());
+        ItemDef* item = indices->getItemDef(stack.getItemId());
+		Block* def = indices->getBlockDef(item->rt.placingBlock);
+		if (def && def->rotatable){
 			const std::string& name = def->rotations.name;
 			if (name == "pipe") {
 				if (norm.x < 0.0f) states = BLOCK_DIR_WEST;
@@ -261,27 +267,39 @@ void PlayerController::updateInteraction(){
 			}
 		}
 		
-		Block* block = contentIds->getBlockDef(vox->id);
-		if (lclick && block->breakable){
-            blocksController->breakBlock(player, block, x, y, z);
+        if (lclick) {
+            if (!input.shift && item->rt.funcsset.on_block_break_by) {
+                if (scripting::on_item_break_block(player, item, x, y, z))
+                    return;
+            } 
+        }
+
+		Block* target = indices->getBlockDef(vox->id);
+		if (lclick && target->breakable){
+            blocksController->breakBlock(player, target, x, y, z);
 		}
-		if (rclick){
-            if (!input.shift && block->rt.funcsset.oninteract) {
-                scripting::on_block_interact(player, block, x, y, z);
+        if (rclick) {
+            if (!input.shift && item->rt.funcsset.on_use_on_block) {
+                if (scripting::on_item_use_on_block(player, item, x, y, z))
+                    return;
+            } 
+        }
+		if (def && rclick){
+            if (!input.shift && target->rt.funcsset.oninteract) {
+                scripting::on_block_interact(player, target, x, y, z);
                 return;
             }
-			if (block->model != BlockModel::xsprite){
+			if (!target->replaceable){
 				x = (iend.x)+(norm.x);
 				y = (iend.y)+(norm.y);
 				z = (iend.z)+(norm.z);
 			}
 			vox = chunks->get(x, y, z);
-            int chosenBlock = player->chosenBlock;
-			if (vox && (block = contentIds->getBlockDef(vox->id))->replaceable) {
-				if (!level->physics->isBlockInside(x,y,z, player->hitbox) 
+            blockid_t chosenBlock = def->rt.id;
+			if (vox && (target = indices->getBlockDef(vox->id))->replaceable) {
+				if (!level->physics->isBlockInside(x,y,z, player->hitbox.get()) 
 					|| !def->obstacle){
-                    Block* def = contentIds->getBlockDef(chosenBlock);
-                    if (def->grounded && !chunks->isSolid(x, y-1, z)) {
+                    if (def->grounded && !chunks->isSolidBlock(x, y-1, z)) {
                         chosenBlock = 0;
                     }
                     if (chosenBlock != vox->id) {
@@ -296,7 +314,19 @@ void PlayerController::updateInteraction(){
 			}
 		}
 		if (Events::jactive(BIND_PLAYER_PICK)){
-			player->chosenBlock = chunks->get(x,y,z)->id;
+            Block* block = indices->getBlockDef(chunks->get(x,y,z)->id);
+			itemid_t id = block->rt.pickingItem;
+			auto inventory = player->getInventory();
+			size_t slotid = inventory->findSlotByItem(id);
+			if (slotid == Inventory::npos) {
+				slotid = player->getChosenSlot();
+			} else {
+				player->setChosenSlot(slotid);
+			}
+			ItemStack& stack = inventory->getSlot(slotid);
+			if (stack.getItemId() != id) {
+				stack.set(ItemStack(id, 1));
+			}
 		}
 	} else {
 		selectedBlockId = -1;

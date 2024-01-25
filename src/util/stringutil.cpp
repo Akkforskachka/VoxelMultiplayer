@@ -2,21 +2,16 @@
 
 #include <vector>
 #include <locale>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <algorithm>
 
-using std::vector;
-using std::string;
-using std::stringstream;
-using std::wstring;
-using std::wstringstream;
-
-wstring util::lfill(wstring s, uint length, wchar_t c) {
+std::wstring util::lfill(std::wstring s, uint length, wchar_t c) {
     if (s.length() >= length) {
         return s;
     }
-    wstringstream ss;
+    std::wstringstream ss;
     for (uint i = 0; i < length-s.length(); i++) {
         ss << c;
     }
@@ -24,11 +19,11 @@ wstring util::lfill(wstring s, uint length, wchar_t c) {
     return ss.str();
 }
 
-wstring util::rfill(wstring s, uint length, wchar_t c) {
+std::wstring util::rfill(std::wstring s, uint length, wchar_t c) {
     if (s.length() >= length) {
         return s;
     }
-    wstringstream ss;
+    std::wstringstream ss;
     ss << s;
     for (uint i = 0; i < length-s.length(); i++) {
         ss << c;
@@ -103,8 +98,8 @@ extern uint32_t util::decode_utf8(uint& size, const char* chr) {
     return code;
 }
 
-string util::wstr2str_utf8(const wstring ws) {
-    vector<char> chars;
+std::string util::wstr2str_utf8(const std::wstring ws) {
+    std::vector<char> chars;
     char buffer[4];
     for (wchar_t wc : ws) {
         uint size = encode_utf8((uint)wc, (ubyte*)buffer);
@@ -112,21 +107,21 @@ string util::wstr2str_utf8(const wstring ws) {
             chars.push_back(buffer[i]);
         }
     }
-    return string(chars.data(), chars.size());
+    return std::string(chars.data(), chars.size());
 }
 
-wstring util::str2wstr_utf8(const string s) {
-    vector<wchar_t> chars;
+std::wstring util::str2wstr_utf8(const std::string s) {
+    std::vector<wchar_t> chars;
     size_t pos = 0;
     uint size = 0;
     while (pos < s.length()) {
         chars.push_back(decode_utf8(size, &s.at(pos)));
         pos += size;
     }
-    return wstring(chars.data(), chars.size());
+    return std::wstring(chars.data(), chars.size());
 }
 
-bool util::is_integer(string text) {
+bool util::is_integer(std::string text) {
     for (char c : text) {
         if (c < '0' || c > '9')
             return false;
@@ -134,7 +129,7 @@ bool util::is_integer(string text) {
     return true;
 }
 
-bool util::is_integer(wstring text) {
+bool util::is_integer(std::wstring text) {
     for (wchar_t c : text) {
         if (c < L'0' || c > L'9')
             return false;
@@ -167,4 +162,93 @@ void util::rtrim(std::string &s) {
 void util::trim(std::string &s) {
     rtrim(s);
     ltrim(s);
+}
+
+std::wstring util::to_wstring(double x, int precision) {
+    std::wstringstream ss;
+    ss << std::fixed << std::setprecision(precision) << x;
+    return ss.str();
+}
+
+const char B64ABC[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                      "abcdefghijklmnopqrstuvwxyz"
+                      "0123456789"
+                      "+/";
+
+inline ubyte base64_decode_char(char c) {
+    if (c >= 'A' && c <= 'Z')
+        return c - 'A';
+    if (c >= 'a' && c <= 'z')
+        return c - 'a' + 26;
+    if (c >= '0' && c <= '9')
+        return c - '0' + 52;
+    if (c == '+')
+        return 62;
+    if (c == '/')
+        return 63;
+    return 0;
+}
+
+inline void base64_encode_(const ubyte* segment, char* output) {
+    output[0] = B64ABC[(segment[0] & 0b11111100) >> 2];
+    output[1] = B64ABC[((segment[0] & 0b11) << 4) | ((segment[1] & 0b11110000) >> 4)];
+    output[2] = B64ABC[((segment[1] & 0b1111) << 2) | ((segment[2] & 0b11000000) >> 6)];
+    output[3] = B64ABC[segment[2] & 0b111111];
+}
+
+std::string util::base64_encode(const ubyte* data, size_t size) {
+    std::stringstream ss;
+
+    size_t fullsegments = (size/3)*3;
+
+    size_t i = 0;
+    for (; i < fullsegments; i+=3) {
+        char output[] = "====";
+        base64_encode_(data+i, output);
+        ss << output;
+    }
+
+    ubyte ending[3] {};
+    for (; i < size; i++) {
+        ending[i-fullsegments] = data[i];
+    }
+    size_t trailing = size-fullsegments;
+    {
+        char output[] = "====";
+        output[0] = B64ABC[(ending[0] & 0b11111100) >> 2];
+        output[1] = B64ABC[((ending[0] & 0b11) << 4) | 
+                           ((ending[1] & 0b11110000) >> 4)];
+        if (trailing > 1)
+            output[2] = B64ABC[((ending[1] & 0b1111) << 2) | 
+                               ((ending[2] & 0b11000000) >> 6)];
+        if (trailing > 2)
+            output[3] = B64ABC[ending[2] & 0b111111];
+        ss << output;
+    }
+    return ss.str();
+}
+
+std::vector<ubyte> util::base64_decode(const char* str, size_t size) {
+    std::vector<ubyte> bytes((size/4)*3);
+    ubyte* dst = bytes.data();
+    for (size_t i = 0; i < size;) {
+        ubyte a = base64_decode_char(ubyte(str[i++]));
+        ubyte b = base64_decode_char(ubyte(str[i++]));
+        ubyte c = base64_decode_char(ubyte(str[i++]));
+        ubyte d = base64_decode_char(ubyte(str[i++]));
+        *(dst++) = ((a << 2) | ((b & 0b110000) >> 4));
+        *(dst++) = (((b & 0b1111) << 4) | ((c & 0b111100) >> 2));
+        *(dst++) = (((c & 0b11) << 6) | d);
+    }
+    if (size >= 2) {
+        size_t outsize = bytes.size();
+        if (str[size-1] == '=') outsize--;
+        if (str[size-2] == '=') outsize--;
+        bytes.resize(outsize);
+    }
+    return bytes;
+}
+
+std::vector<ubyte> util::base64_decode(const std::string& str) {
+    return base64_decode(str.c_str(), str.size());
 }

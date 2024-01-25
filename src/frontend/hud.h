@@ -8,7 +8,6 @@
 
 #include "../graphics/GfxContext.h"
 
-class Batch2D;
 class Camera;
 class Level;
 class Block;
@@ -16,21 +15,20 @@ class Assets;
 class Player;
 class Level;
 class Engine;
-class ContentGfxCache;
-class WorldRenderer;
-class BlocksPreview;
+class SlotView;
+class InventoryView;
+class LevelFrontend;
+class InventoryInteraction;
 
 namespace gui {
 	class GUI;
 	class UINode;
+    class Panel;
 }
 
 class HudRenderer {
-	Level* level;
     Assets* assets;
-	Batch2D* batch;
 	Camera* uicamera;
-	BlocksPreview* blocksPreview;
 
 	int fps = 60;
 	int fpsMin = 60;
@@ -39,17 +37,27 @@ class HudRenderer {
 	bool inventoryOpen = false;
 	bool pause = false;
 
+    std::shared_ptr<gui::Panel> contentAccessPanel;
+    std::shared_ptr<InventoryView> contentAccess;
+    std::shared_ptr<InventoryView> hotbarView;
+    std::shared_ptr<InventoryView> inventoryView;
 	std::shared_ptr<gui::UINode> debugPanel;
+    std::unique_ptr<InventoryInteraction> interaction;
+    std::shared_ptr<SlotView> grabbedItemView;
 	gui::GUI* gui;
-	const ContentGfxCache* const cache;
+	LevelFrontend* frontend;
+
+    void createDebugPanel(Engine* engine);
+
+    std::shared_ptr<InventoryView> createContentAccess();
+    std::shared_ptr<InventoryView> createHotbar();
+    std::shared_ptr<InventoryView> createInventory();
 public:
-	HudRenderer(Engine* engine, 
-				Level* level, 
-				const ContentGfxCache* cache);
+	HudRenderer(Engine* engine, LevelFrontend* frontend);
 	~HudRenderer();
 
-	void update();
-	void drawContentAccess(const GfxContext& ctx, Player* player);
+	void update(bool hudVisible);
+    void drawOverlay(const GfxContext& context);
 	void draw(const GfxContext& context);
 	void drawDebug(int fps);
 

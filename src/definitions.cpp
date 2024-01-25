@@ -2,6 +2,7 @@
 
 #include <glm/glm.hpp>
 
+#include "items/ItemDef.h"
 #include "content/Content.h"
 #include "window/Window.h"
 #include "window/Events.h"
@@ -20,7 +21,11 @@ void setup_definitions(ContentBuilder* builder) { // Strange function, need to R
 	block->obstacle = false;
 	block->selectable = false;
 	block->model = BlockModel::none;
+    block->pickingItem = "core:empty";
 	builder->add(block);
+
+    ItemDef* item = builder->createItem("core:empty");
+    item->iconType = item_icon_type::none;
 }
 
 void setup_bindings() {
