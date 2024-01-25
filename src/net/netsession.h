@@ -9,7 +9,19 @@
 #include "../voxels/ChunksStorage.h"
 #include "../coders/json.h"
 
-// CURRENT TASK: fix problem with serializing chunk data 
+#define NET_MODIFY(id, states, c_x, c_y, c_z) 	do {                        \
+                                            NetMessage msg = NetMessage();  \
+                                            msg.action = NetAction::MODIFY; \
+                                            msg.block = id;         \
+                                            msg.states = states;    \
+                                            msg.coordinates.x = c_x;  \
+                                            msg.coordinates.y = c_y;  \
+                                            msg.coordinates.z = c_z;  \
+                                            if(NetSession *ses = NetSession::GetSessionInstance())  \
+                                            {                                                       \
+                                                ses->RegisterMessage(msg);                          \
+                                            }                                                       \
+                                        } while(0)
 
 // TODO: better RPC calls - NetSession::RegisterMessage(object, event, replicationType, ...params)
 // where replicationType defines wether RPC should replicate only on client, 

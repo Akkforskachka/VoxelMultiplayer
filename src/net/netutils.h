@@ -56,6 +56,7 @@ struct NetMessage
     int block;
     uint8_t states;
     ubyte *data;
+    // std::vector<ubyte> data;
 };
 
 struct NetPackage
@@ -65,5 +66,6 @@ struct NetPackage
 };
 
 constexpr int NetSize()  { return 5128; } // todo
+
 
 #endif // NET_UTILS_H

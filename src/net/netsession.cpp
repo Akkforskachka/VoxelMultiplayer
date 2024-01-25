@@ -38,7 +38,6 @@ void NetSession::TerminateSession()
 {
     if(sessionInstance == nullptr)
         return;
-
     delete sessionInstance;
     sessionInstance = nullptr;
 }
@@ -56,6 +55,7 @@ NetSession::~NetSession()
     {
         delete usr;
     }
+    socket.CloseSocket();
     users.clear();
 }
 
@@ -195,29 +195,26 @@ void NetSession::ProcessPackage(NetPackage *pkg)
                 {
                     std::shared_ptr<Chunk> chunk = sharedLevel->chunksStorage->get((int)msg->coordinates.x, (int)msg->coordinates.z);
                     if(chunk == nullptr) continue;
-                    if(chunk->isLoaded()) continue;;
+                    if(chunk->isLoaded()) continue;
                     if(msg->data)
                     {
                         chunk->decode(msg->data);
 
-                        // chunksQueue.erase({msg->coordinates.x, msg->coordinates.z});
-
-                        sharedLevel->chunks->putChunk(chunk);
+                        free(msg->data);
 
                         for (size_t i = 0; i < CHUNK_VOL; i++) {
                             blockid_t id = chunk->voxels[i].id;
                             if (sharedLevel->content->getIndices()->getBlockDef(id) == nullptr) {
-                                std::cout << "corruped block detected at " << i << " of chunk ";
-                                std::cout << chunk->x << "x" << chunk->z;
-                                std::cout << " -> " << (int)id << std::endl;
+                                // std::cout << "corruped block detected at " << i << " of chunk ";
+                                // std::cout << chunk->x << "x" << chunk->z;
+                                // std::cout << " -> " << (int)id << std::endl;
                                 chunk->voxels[i].id = 11;
                             }
                         }
 
+                        sharedLevel->chunks->putChunk(chunk);
                         chunk->updateHeights();
-
                         Lighting::prebuildSkyLight(chunk.get(), sharedLevel->content->getIndices());
-
                         chunk->setLoaded(true);
                         chunk->setReady(false);
                         chunk->setLighted(false);
@@ -227,16 +224,16 @@ void NetSession::ProcessPackage(NetPackage *pkg)
                 {
                     if(b) continue;
 
-                    ubyte *data = ServerGetChunk((int)msg->coordinates.x, (int)msg->coordinates.z);
+                    ubyte *chunkData = ServerGetChunk((int)msg->coordinates.x, (int)msg->coordinates.z);
 
-                    if(data)
+                    if(chunkData)
                     {
+                        b = true;
                         NetMessage fm = NetMessage();
                         fm.action = NetAction::FETCH;
                         fm.coordinates.x = msg->coordinates.x;
                         fm.coordinates.z = msg->coordinates.z;
-                        fm.data = data;
-                        b = true;
+                        fm.data = chunkData;
                         RegisterMessage(fm);
                     }
                 }
@@ -273,7 +270,7 @@ void NetSession::ServerRoutine()
          
         for(NetUser *usr : users)
         {
-            if(usr->isConnected)
+            if(usr->isConnected && usr->userID != 0)
                 socket.SendPackage(&servPkg, usr->userID);
         }
         pkgToSend = NetPackage();
@@ -288,6 +285,11 @@ void NetSession::ClientRoutine()
         while(socket.RecievePackage(&inPkg))
         {
             ProcessPackage(&inPkg);
+
+            // for(NetMessage msg : inPkg.messages)
+            // {
+            //     free(msg.data);
+            // }
         }
     }
 
@@ -326,8 +328,7 @@ ubyte *NetSession::ServerGetChunk(int x, int z)
     {
         if(chunk->isReady())
         {
-            ubyte *buffer = chunk->encode();
-            return buffer;
+            return chunk->encode();
         }
     }
     // TODO: generate chunk

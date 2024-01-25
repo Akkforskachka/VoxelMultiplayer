@@ -12,6 +12,7 @@
 #include "../maths/voxmaths.h"
 #include "../maths/aabb.h"
 #include "../maths/rays.h"
+#include "../net/netsession.h"
 
 #include <math.h>
 #include <limits.h>
@@ -182,6 +183,8 @@ void Chunks::set(int x, int y, int z, int id, uint8_t states){
 		chunk->setModified(true);
 	if (lz == CHUNK_D-1 && (chunk = getChunk(cx+ox, cz+oz+1))) 
 		chunk->setModified(true);
+
+	NET_MODIFY(id, states, x + ox * CHUNK_W, y, z + oz * CHUNK_D);
 }
 
 voxel* Chunks::rayCast(glm::vec3 start, 

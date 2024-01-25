@@ -4,6 +4,7 @@
 #include "netutils.h"
 #include <stdlib.h>
 #include <vector>
+#include "../util/stringutil.h"
 
 #ifdef _WIN32
     // TODO: windows API

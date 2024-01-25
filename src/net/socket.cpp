@@ -2,10 +2,13 @@
 #include <strings.h>
 #include <string.h>
 #include <iostream>
+#include <iterator>
+#include <numeric>
 #include "../coders/json.h"
 #include "netuser.h"
 #include "../coders/gzip.h"
 #include "../voxels/Chunk.h"
+
 
 bool Socket::StartupServer(const int port)
 {
@@ -137,14 +140,13 @@ bool Socket::UpdateClient()
 void Socket::Deserialize(const char *buff)
 {
     std::unique_ptr<dynamic::Map> pckg;
-
     try
     {
         pckg = json::parse(buff);
     }
     catch(const std::exception& e)
     {
-        std::cerr << e.what() << " in message: " << buff << std::endl;
+        std::cerr << e.what() << std::endl;
         return;
     }        
 
@@ -160,7 +162,6 @@ void Socket::Deserialize(const char *buff)
         {
             dynamic::List *msgs = pckg->list("messages");
             NetMessage stmsg = NetMessage();
-            stmsg.data = nullptr;
             for(int i = 0; i < mCount; i++)
             {
                 dynamic::Map *messg = msgs->map(i); 
@@ -187,12 +188,14 @@ void Socket::Deserialize(const char *buff)
                 }
                 if(messg->has("data"))
                 {
-                    std::vector<ubyte> decompressed = gzip::decompress((ubyte *)messg->getStr("data", "").data(), 
-                                                                    messg->getStr("data", "").length());
-                    stmsg.data = decompressed.data();
+
+                    std::vector<ubyte> data = util::base64_decode(messg->getStr("data", ""));
+                    std::vector<ubyte> decompressed = gzip::decompress(data.data(), data.size() - 1);
+
+                    stmsg.data = new ubyte[CHUNK_DATA_LEN];
+                    memcpy(stmsg.data, decompressed.data(), CHUNK_DATA_LEN);
                 }
-                sPkg.messages[sPkg.msgCount++] = stmsg;
-                stmsg = NetMessage();
+               sPkg.messages[sPkg.msgCount++] = stmsg;
             }
         }
         inPkg.push_back(sPkg);
@@ -268,14 +271,15 @@ bool Socket::SendPackage(NetPackage *pckg, socketfd sock)
                 if(pckg->messages[i].data)
                 {
                     std::vector<ubyte> compressed = gzip::compress(pckg->messages[i].data, CHUNK_DATA_LEN);
-                    msg.put("data", std::string((const char *)compressed.data(), compressed.size()));
+                    std::string text = util::base64_encode(compressed.data(), compressed.size());
+                    msg.put("data", text);
                 }
             break;
         }
     }
     spk.put("count", pckg->msgCount);
 
-    std::string buff = json::stringify(&spk, false, "");
+    std::string buff = json::stringify(&spk, true, "");
     return SendMessage(buff.c_str(), buff.length(), sock, false);
 }
 

@@ -186,7 +186,7 @@ void open_world(std::string name, Engine* engine, NetMode stp) {
         }
         else
         {
-            NetSession *ses =NetSession::StartSession(stp, level);
+            NetSession *ses = NetSession::StartSession(stp, level);
             if(ses)
             {
                 if(ses->StartServer())
