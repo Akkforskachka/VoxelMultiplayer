@@ -154,7 +154,7 @@ void open_world(std::string name, Engine* engine, NetMode stp) {
     auto folder = paths->getWorldsFolder()/fs::u8path(name);
     try {
         engine->loadWorldContent(folder);
-    } catch (contentpack_error& error) {
+    } catch (const contentpack_error& error) {
         // could not to find or read pack
         guiutil::alert(engine->getGUI(), 
                        langs::get(L"error.pack-not-found")+
@@ -166,6 +166,7 @@ void open_world(std::string name, Engine* engine, NetMode stp) {
                        L": "+util::str2wstr_utf8(error.what()));
         return;
     }
+    paths->setWorldFolder(folder);
 
     auto& packs = engine->getContentPacks();
     auto* content = engine->getContent();
@@ -179,26 +180,33 @@ void open_world(std::string name, Engine* engine, NetMode stp) {
             show_convert_request(engine, content, lut, folder);
         }
     } else {
-        Level *level = World::load(folder, settings, content, packs);
-        if(stp == NetMode::STAND_ALONE)
-        {
-            engine->setScreen(std::make_shared<LevelScreen>(engine, level));
-        }
-        else
-        {
-            NetSession *ses = NetSession::StartSession(stp, level);
-            if(ses)
+        try {
+            Level* level = World::load(folder, settings, content, packs);
+            if(stp == NetMode::STAND_ALONE)
             {
-                if(ses->StartServer())
+                engine->setScreen(std::make_shared<LevelScreen>(engine, level));
+            }
+            else
+            {
+                NetSession *ses = NetSession::StartSession(stp, level);
+                if(ses)
                 {
-                    engine->setScreen(std::make_shared<LevelScreen>(engine, level));
-                }
-                else
-                {
-                    NetSession::TerminateSession();
+                    if(ses->StartServer())
+                    {
+                        engine->setScreen(std::make_shared<LevelScreen>(engine, level));
+                    }
+                    else
+                    {
+                        NetSession::TerminateSession();
+                    }
                 }
             }
-
+            engine->setScreen(std::make_shared<LevelScreen>(engine, level));
+        } catch (const world_load_error& error) {
+            guiutil::alert(engine->getGUI(), 
+                        langs::get(L"Error")+
+                        L": "+util::str2wstr_utf8(error.what()));
+            return;
         }
     }
 }
@@ -243,48 +251,42 @@ Panel* create_worlds_panel(Engine* engine) {
     panel->maxLength(400);
 
     auto paths = engine->getPaths();
-    fs::path worldsFolder = paths->getWorldsFolder();
-    if (fs::is_directory(worldsFolder)) {
-        for (auto entry : fs::directory_iterator(worldsFolder)) {
-            if (!entry.is_directory()) {
-                continue;
-            }
-            auto folder = entry.path();
-            auto name = folder.filename().u8string();
-            auto namews = util::str2wstr_utf8(name);
 
-            auto btn = std::make_shared<RichButton>(vec2(390, 46));
-            btn->color(vec4(1.0f, 1.0f, 1.0f, 0.1f));
-            btn->setHoverColor(vec4(1.0f, 1.0f, 1.0f, 0.17f));
+    for (auto folder : paths->scanForWorlds()) {
+        auto name = folder.filename().u8string();
+        auto namews = util::str2wstr_utf8(name);
 
-            auto label = std::make_shared<Label>(namews);
-            label->setInteractive(false);
-            btn->add(label, vec2(8, 8));
-            btn->listenAction([=](GUI*) {
-                open_world(name, engine, NetMode::STAND_ALONE);
+        auto btn = std::make_shared<RichButton>(vec2(390, 46));
+        btn->color(vec4(1.0f, 1.0f, 1.0f, 0.1f));
+        btn->setHoverColor(vec4(1.0f, 1.0f, 1.0f, 0.17f));
+
+        auto label = std::make_shared<Label>(namews);
+        label->setInteractive(false);
+        btn->add(label, vec2(8, 8));
+        btn->listenAction([=](GUI*) {
+            open_world(name, engine, NetMode::STAND_ALONE);
+        });
+
+        auto image = std::make_shared<Image>("gui/delete_icon", vec2(32, 32));
+        image->color(vec4(1, 1, 1, 0.5f));
+
+        auto delbtn = std::make_shared<Button>(image, vec4(2));
+        delbtn->color(vec4(0.0f));
+        delbtn->setHoverColor(vec4(1.0f, 1.0f, 1.0f, 0.17f));
+        
+        btn->add(delbtn, vec2(330, 3));
+
+        delbtn->listenAction([=](GUI* gui) {
+            guiutil::confirm(gui, langs::get(L"delete-confirm", L"world")+
+            L" ("+util::str2wstr_utf8(folder.u8string())+L")", [=]() 
+            {
+                std::cout << "deleting " << folder.u8string() << std::endl;
+                fs::remove_all(folder);
+                menus::refresh_menus(engine, gui->getMenu());
             });
+        });
 
-            auto image = std::make_shared<Image>("gui/delete_icon", vec2(32, 32));
-            image->color(vec4(1, 1, 1, 0.5f));
-
-            auto delbtn = std::make_shared<Button>(image, vec4(2));
-            delbtn->color(vec4(0.0f));
-            delbtn->setHoverColor(vec4(1.0f, 1.0f, 1.0f, 0.17f));
-            
-            btn->add(delbtn, vec2(330, 3));
-
-            delbtn->listenAction([=](GUI* gui) {
-                guiutil::confirm(gui, langs::get(L"delete-confirm", L"world")+
-                L" ("+util::str2wstr_utf8(folder.u8string())+L")", [=]() 
-                {
-                    std::cout << "deleting " << folder.u8string() << std::endl;
-                    fs::remove_all(folder);
-                    menus::refresh_menus(engine, gui->getMenu());
-                });
-            });
-
-            panel->add(btn);
-        }
+        panel->add(btn);
     }
     return panel;
 }
@@ -396,6 +398,7 @@ void create_new_world_panel(Engine* engine, PagesControl* menu) {
         try {
             engine->loadAllPacks();
             engine->loadContent();
+            paths->setWorldFolder(folder);
         } catch (const contentpack_error& error) {
             guiutil::alert(engine->getGUI(),
                         langs::get(L"Content Error", L"menu")+
@@ -409,7 +412,6 @@ void create_new_world_panel(Engine* engine, PagesControl* menu) {
                         L": "+util::str2wstr_utf8(error.what()));
             return;
         }
-        fs::create_directories(folder);
 
         Level* level = World::create(
             nameutf8, folder, seed, 
@@ -568,9 +570,13 @@ void create_pause_panel(Engine* engine, PagesControl* menu) {
     panel->add(create_button(L"Continue", vec4(10.0f), vec4(1), [=](GUI*){
         menu->reset();
     }));
+    panel->add(guiutil::gotoButton(L"Content", "content", menu));
     panel->add(guiutil::gotoButton(L"Settings", "settings", menu));
 
     panel->add(create_button(L"Save and Quit to Menu", vec4(10.f), vec4(1), [=](GUI*){
+        // save world and destroy LevelScreen
+        engine->setScreen(nullptr);
+        // create and go to menu screen
         engine->setScreen(std::make_shared<MenuScreen>(engine));
     }));
 }

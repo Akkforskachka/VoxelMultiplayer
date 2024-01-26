@@ -18,7 +18,6 @@ LevelController::LevelController(EngineSettings& settings, Level* level)
 }
 
 LevelController::~LevelController() {
-    scripting::on_world_quit();
 }
 
 void LevelController::update(float delta, bool input, bool pause) {
@@ -31,4 +30,12 @@ void LevelController::update(float delta, bool input, bool pause) {
     {
         ses->Update(delta);
     }
+}
+
+void LevelController::onWorldSave() {
+    scripting::on_world_save();
+}
+
+void LevelController::onWorldQuit() {
+    scripting::on_world_quit();
 }
