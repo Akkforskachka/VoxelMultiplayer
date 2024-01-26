@@ -175,6 +175,10 @@ void Socket::Deserialize(const char *buff)
                 if(messg->has("block"))
                 {
                     messg->num("block", stmsg.block);
+                }                
+                if(messg->has("states"))
+                {
+                    messg->num("states", stmsg.states);
                 }
                 if(messg->has("coordinates"))
                 {
