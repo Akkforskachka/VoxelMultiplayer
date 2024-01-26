@@ -137,6 +137,7 @@ bool NetSession::ConnectToSession(const char *ip, Engine *eng, bool versionCheck
     data->map("version")->num("major", connData.major);
     data->map("version")->num("minor", connData.minor);
     data->num("user", connData.userID );
+    connData.name = data->getStr("name", "err");
 
     // for(json::Value *val : data->arr("content")->values)
     // {
@@ -186,6 +187,8 @@ void NetSession::ProcessPackage(NetPackage *pkg)
         NetMessage msg = pkg->GetMessage(i);
         switch(msg.action)
         {
+            case UNKOWN:
+            break;
             case NetAction::SERVER_UPDATE:
                 serverUpdate = true;
                 sharedLevel->getWorld()->daytime = msg.coordinates.x;

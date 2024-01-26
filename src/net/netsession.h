@@ -11,6 +11,9 @@
 #include "../coders/json.h"
 
 
+
+// CURRENT TASK: error handling
+
 // TODO: better RPC calls - NetSession::RegisterMessage(object, event, replicationType, ...params)
 // where replicationType defines wether RPC should replicate only on client, 
 // on server and owning client, or across the whole network
