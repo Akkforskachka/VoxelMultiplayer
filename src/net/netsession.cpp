@@ -15,6 +15,7 @@
 #include "../voxels/Chunks.h"
 #include "../voxels/ChunksStorage.h"
 #include "../lighting/Lighting.h"
+#include "../frontend/WorldRenderer.h"
 
 namespace fs = std::filesystem;
 
@@ -187,6 +188,8 @@ void NetSession::ProcessPackage(NetPackage *pkg)
         {
             case NetAction::SERVER_UPDATE:
                 serverUpdate = true;
+                sharedLevel->getWorld()->daytime = msg.coordinates.x;
+                WorldRenderer::fog = msg.coordinates.y;
             break;
             case NetAction::MODIFY:
                 sharedLevel->chunks->set((int)msg.coordinates.x, (int)msg.coordinates.y, (int)msg.coordinates.z, msg.block, msg.states);
@@ -205,9 +208,9 @@ void NetSession::ProcessPackage(NetPackage *pkg)
                         for (size_t i = 0; i < CHUNK_VOL; i++) {
                             blockid_t id = chunk->voxels[i].id;
                             if (sharedLevel->content->getIndices()->getBlockDef(id) == nullptr) {
-                                // std::cout << "corruped block detected at " << i << " of chunk ";
-                                // std::cout << chunk->x << "x" << chunk->z;
-                                // std::cout << " -> " << (int)id << std::endl;
+                                std::cout << "corruped block detected at " << i << " of chunk ";
+                                std::cout << chunk->x << "x" << chunk->z;
+                                std::cout << " -> " << (int)id << std::endl;
                                 chunk->voxels[i].id = 11;
                             }
                         }
@@ -262,6 +265,8 @@ void NetSession::ServerRoutine()
         NetPackage servPkg = NetPackage();
         NetMessage upd = NetMessage();
         upd.action = NetAction::SERVER_UPDATE;
+        upd.coordinates.x = sharedLevel->getWorld()->daytime;
+        upd.coordinates.y = WorldRenderer::fog;
         servPkg.AddMessage(upd);
 
         for(size_t i = 0; i < MAX_MESSAGES_PER_PACKET && !messagesBuffer.empty(); ++i)
@@ -327,13 +332,24 @@ ubyte *NetSession::ServerGetChunk(int x, int z) const
 {
     std::shared_ptr<Chunk> chunk = sharedLevel->chunksStorage->get(x, z);
 
+    // get chunk from memory
     if(chunk)
     {
-        if(chunk->isReady())
+        if(chunk->isLoaded())
         {
             return chunk->encode();
         }
     }
+
+    // load and get chunk from hard drive
+    chunk = sharedLevel->chunksStorage->create(x, z);    
+    if(chunk->isLoaded())
+    {
+        return chunk->encode();
+    }
+
+    // generate chunk
+    
     return nullptr;
 }
 

@@ -251,7 +251,7 @@ bool Socket::SendPackage(NetPackage *pckg, socketfd sock)
     dynamic::Map spk = dynamic::Map();
     dynamic::List& smgs = spk.putList("messages");
 
-    for(int i = 0; i < pckg->GetMessagesCount(); i++)
+    for(size_t i = 0; i < pckg->GetMessagesCount(); i++)
     {
         dynamic::Map& msg = smgs.putMap();
         msg.put("usr_id", pckg->GetMessage(i).usr_id);
@@ -259,6 +259,13 @@ bool Socket::SendPackage(NetPackage *pckg, socketfd sock)
         dynamic::List& p = msg.putList("coordinates");
         switch(pckg->GetMessage(i).action)
         {
+            case UNKOWN:
+            break;
+            case NetAction::SERVER_UPDATE:
+                p.put(pckg->GetMessage(i).coordinates.x);
+                p.put(pckg->GetMessage(i).coordinates.y);
+                p.put(pckg->GetMessage(i).coordinates.z);
+            break;
             case NetAction::MODIFY:
                 msg.put("block", pckg->GetMessage(i).block);
                 p.put(pckg->GetMessage(i).coordinates.x);
