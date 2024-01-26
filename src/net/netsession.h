@@ -4,24 +4,12 @@
 #include "netutils.h"
 #include "netuser.h"
 #include "socket.h"
+#include "netpackage.h"
 #include <stdlib.h>
 #include <vector>
 #include "../voxels/ChunksStorage.h"
 #include "../coders/json.h"
 
-#define NET_MODIFY(id, states, c_x, c_y, c_z) 	do {                        \
-                                            NetMessage msg = NetMessage();  \
-                                            msg.action = NetAction::MODIFY; \
-                                            msg.block = id;         \
-                                            msg.states = states;    \
-                                            msg.coordinates.x = c_x;  \
-                                            msg.coordinates.y = c_y;  \
-                                            msg.coordinates.z = c_z;  \
-                                            if(NetSession *ses = NetSession::GetSessionInstance())  \
-                                            {                                                       \
-                                                ses->RegisterMessage(msg);                          \
-                                            }                                                       \
-                                        } while(0)
 
 // TODO: better RPC calls - NetSession::RegisterMessage(object, event, replicationType, ...params)
 // where replicationType defines wether RPC should replicate only on client, 
@@ -42,6 +30,20 @@
 
 // TODO: save remote player's last location and restore on connection 
 
+#define NET_MODIFY(id, states, c_x, c_y, c_z) 	do {                        \
+                                            NetMessage msg = NetMessage();  \
+                                            msg.action = NetAction::MODIFY; \
+                                            msg.block = id;         \
+                                            msg.states = states;    \
+                                            msg.coordinates.x = c_x;  \
+                                            msg.coordinates.y = c_y;  \
+                                            msg.coordinates.z = c_z;  \
+                                            if(NetSession *ses = NetSession::GetSessionInstance())  \
+                                            {                                                       \
+                                                msg.usr_id = ses->GetUser(0)->GetUniqueUserID();         \
+                                                ses->RegisterMessage(msg);                          \
+                                            }                                                       \
+                                        } while(0)
 class Player;
 class Level;
 class Engine;
@@ -66,10 +68,13 @@ private:
     Socket socket;
     Level *sharedLevel;
     ConnectionData connData;
-    NetPackage pkgToSend;
-    bool serverUpdate;
+    // NetPackage pkgToSend;
+
+    std::vector<NetMessage> messagesBuffer;
 
     std::unordered_map<glm::ivec2, std::shared_ptr<Chunk>> chunksQueue;
+
+    bool serverUpdate;
 
 private:
     static NetSession *sessionInstance;
@@ -78,7 +83,6 @@ public:
     static NetSession *StartSession(NetMode type, Level *sl);
     static void TerminateSession();
     static NetSession *GetSessionInstance() { return sessionInstance; }
-    static void NetUpdate(float delta) noexcept { if(sessionInstance) { sessionInstance->Update(delta); }}
 
 public:
     server void HandleConnection(Player *rp, int ui);
@@ -86,8 +90,8 @@ public:
     bool StartServer();
     ConnectionData GetConnectionData() const { return connData; }
     void Update(float delta) noexcept;
-    void RegisterMessage(const NetMessage& msg) noexcept;
-    void SetSharedLevel(Level *sl);
+    void RegisterMessage(const NetMessage msg) noexcept;
+    void SetSharedLevel(Level *sl) noexcept;
     void ClientFetchChunk(std::shared_ptr<Chunk> chunk, int x, int z);
 
 public:
@@ -102,7 +106,7 @@ private:
     void ServerRoutine();
     void ClientRoutine();
     void ProcessPackage(NetPackage *pkg);
-    ubyte *ServerGetChunk(int x, int z);
+    ubyte *ServerGetChunk(int x, int z) const;
     NetUser *AddUser(NetUserRole role, Player *pl, int id);
 };
 

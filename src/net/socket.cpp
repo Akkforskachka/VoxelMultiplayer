@@ -102,7 +102,7 @@ bool Socket::UpdateServer(const std::vector<NetUser *> ins)
         if(usr->isConnected == false)
             continue;
             
-        if(RecieveMessage(buff, NetSize(), usr->userID, false))
+        if(RecieveMessage(buff, NetSize(), usr->GetUniqueUserID(), false))
         {
             Deserialize(buff);
         }
@@ -188,14 +188,13 @@ void Socket::Deserialize(const char *buff)
                 }
                 if(messg->has("data"))
                 {
-
                     std::vector<ubyte> data = util::base64_decode(messg->getStr("data", ""));
                     std::vector<ubyte> decompressed = gzip::decompress(data.data(), data.size() - 1);
 
                     stmsg.data = new ubyte[CHUNK_DATA_LEN];
                     memcpy(stmsg.data, decompressed.data(), CHUNK_DATA_LEN);
                 }
-               sPkg.messages[sPkg.msgCount++] = stmsg;
+                sPkg.AddMessage(stmsg);
             }
         }
         inPkg.push_back(sPkg);
@@ -237,7 +236,6 @@ bool Socket::SendMessage(const char *msg, int length, socketfd dest, bool wait)
     assert(0 && "TODO: Implement windows API");
 #else 
     int r = send(dest, msg, length, wait ? 0 : MSG_DONTWAIT);
-
     return r > 0;
 #endif // _WIN32
 }
@@ -245,39 +243,39 @@ bool Socket::SendMessage(const char *msg, int length, socketfd dest, bool wait)
 bool Socket::SendPackage(NetPackage *pckg, socketfd sock)
 {
     // Serialize package and send it
-    
+
     dynamic::Map spk = dynamic::Map();
     dynamic::List& smgs = spk.putList("messages");
 
-    for(int i = 0; i < pckg->msgCount; i++)
+    for(int i = 0; i < pckg->GetMessagesCount(); i++)
     {
         dynamic::Map& msg = smgs.putMap();
-        msg.put("usr_id", pckg->messages[i].usr_id);
-        msg.put("action", pckg->messages[i].action);
+        msg.put("usr_id", pckg->GetMessage(i).usr_id);
+        msg.put("action", pckg->GetMessage(i).action);
         dynamic::List& p = msg.putList("coordinates");
-        switch(pckg->messages[i].action)
+        switch(pckg->GetMessage(i).action)
         {
             case NetAction::MODIFY:
-                msg.put("block", pckg->messages[i].block);
-                p.put(pckg->messages[i].coordinates.x);
-                p.put(pckg->messages[i].coordinates.y);
-                p.put(pckg->messages[i].coordinates.z);
-                msg.put("states", pckg->messages[i].states);
+                msg.put("block", pckg->GetMessage(i).block);
+                p.put(pckg->GetMessage(i).coordinates.x);
+                p.put(pckg->GetMessage(i).coordinates.y);
+                p.put(pckg->GetMessage(i).coordinates.z);
+                msg.put("states", pckg->GetMessage(i).states);
             break;
             case NetAction::FETCH:
-                p.put(pckg->messages[i].coordinates.x);
-                p.put(pckg->messages[i].coordinates.y);
-                p.put(pckg->messages[i].coordinates.z);
-                if(pckg->messages[i].data)
+                p.put(pckg->GetMessage(i).coordinates.x);
+                p.put(pckg->GetMessage(i).coordinates.y);
+                p.put(pckg->GetMessage(i).coordinates.z);
+                if(pckg->GetMessage(i).data)
                 {
-                    std::vector<ubyte> compressed = gzip::compress(pckg->messages[i].data, CHUNK_DATA_LEN);
+                    std::vector<ubyte> compressed = gzip::compress(pckg->GetMessage(i).data, CHUNK_DATA_LEN);
                     std::string text = util::base64_encode(compressed.data(), compressed.size());
                     msg.put("data", text);
                 }
             break;
         }
     }
-    spk.put("count", pckg->msgCount);
+    spk.put("count", pckg->GetMessagesCount());
 
     std::string buff = json::stringify(&spk, true, "");
     return SendMessage(buff.c_str(), buff.length(), sock, false);

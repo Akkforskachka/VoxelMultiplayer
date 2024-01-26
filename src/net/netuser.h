@@ -13,9 +13,11 @@ private:
     Player *localPlayer;
     // PlayerController *localController;
     NetUserRole role;
+
+    std::string userName;
+    uniqueUserID userID;
     
 public:
-    int userID;
     bool isApproved;
     bool isConnected;
 
@@ -26,6 +28,8 @@ public:
 public:
     Player *GetLocalPlayer() const;
     NetUserRole GetNetRole() const;
+    uniqueUserID GetUniqueUserID() const;
+    std::string GetUserName() const;
 };
 
 #endif

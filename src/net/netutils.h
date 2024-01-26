@@ -14,12 +14,14 @@
 #define NET_PORT 6969
 #define SERVER_BIT_RATE 30
 #define MAX_CONN 5
-#define MAX_PACKAGE_SIZE 20
+#define MAX_MESSAGES_PER_PACKET 20
 
 #ifdef _WIN32
 #else
     typedef int socketfd;
 #endif // _WIN32
+
+typedef int uniqueUserID;
 
 enum NetMode
 {
@@ -55,14 +57,7 @@ struct NetMessage
     } coordinates;
     int block;
     uint8_t states;
-    ubyte *data;
-    // std::vector<ubyte> data;
-};
-
-struct NetPackage
-{
-    int msgCount = 0;
-    NetMessage messages[MAX_PACKAGE_SIZE];
+    ubyte *data = nullptr;
 };
 
 constexpr int NetSize()  { return 5128; } // todo

@@ -46,6 +46,8 @@ NetSession::NetSession(NetMode mode, Player *lp, Level *sl) :
     sesMode(mode), 
     sharedLevel(sl)
 {
+    messagesBuffer = std::vector<NetMessage>();
+    serverUpdate = false;
 }
 
 NetSession::~NetSession()
@@ -77,7 +79,7 @@ bool NetSession::StartServer()
 }
 
 
-void NetSession::SetSharedLevel(Level *sl)
+void NetSession::SetSharedLevel(Level *sl) noexcept
 {
     sharedLevel = sl;
 }
@@ -100,7 +102,6 @@ void NetSession::HandleConnection(Player *rp, socketfd ui)
     dynamic::Map& verObj = worldData.putMap("version");
     verObj.put("major", ENGINE_VERSION_MAJOR);
     verObj.put("minor", ENGINE_VERSION_MINOR);
-
 
     /* sharing the whole list of block names can make message too large for sending and recieving*/
 
@@ -170,7 +171,7 @@ bool NetSession::ConnectToSession(const char *ip, Engine *eng, bool versionCheck
 NetUser *NetSession::AddUser(NetUserRole role, Player *pl, int id)
 {
     NetUser *user = new NetUser(role, pl, id);
-    std::cout << "[INFO]: Adding NetUser with userID  = "  << user->userID << std::endl;
+    std::cout << "[INFO]: Adding NetUser with userID  = "  << user->GetUniqueUserID() << std::endl;
     users.push_back(user);
     return user;
 }
@@ -178,29 +179,28 @@ NetUser *NetSession::AddUser(NetUserRole role, Player *pl, int id)
 void NetSession::ProcessPackage(NetPackage *pkg)
 {
     bool b = false;
-    for(int i = 0; i < pkg->msgCount; i++)
+
+    for(int i = 0; i < (int)pkg->GetMessagesCount(); i++)
     {
-        NetMessage *msg = &pkg->messages[i]; 
-        switch(msg->action)
+        NetMessage msg = pkg->GetMessage(i);
+        switch(msg.action)
         {
             case NetAction::SERVER_UPDATE:
                 serverUpdate = true;
             break;
             case NetAction::MODIFY:
-                sharedLevel->chunks->set((int)msg->coordinates.x, (int)msg->coordinates.y, (int)msg->coordinates.z, msg->block, msg->states);
-                pkgToSend.msgCount -= 1; // some trash, need to fix it later
+                sharedLevel->chunks->set((int)msg.coordinates.x, (int)msg.coordinates.y, (int)msg.coordinates.z, msg.block, msg.states);
+                messagesBuffer.pop_back(); // some shit again
             break;
             case NetAction::FETCH:
                 if(sesMode == NetMode::CLIENT)
                 {
-                    std::shared_ptr<Chunk> chunk = sharedLevel->chunksStorage->get((int)msg->coordinates.x, (int)msg->coordinates.z);
+                    std::shared_ptr<Chunk> chunk = sharedLevel->chunksStorage->get((int)msg.coordinates.x, (int)msg.coordinates.z);
                     if(chunk == nullptr) continue;
                     if(chunk->isLoaded()) continue;
-                    if(msg->data)
+                    if(msg.data)
                     {
-                        chunk->decode(msg->data);
-
-                        free(msg->data);
+                        chunk->decode(msg.data);
 
                         for (size_t i = 0; i < CHUNK_VOL; i++) {
                             blockid_t id = chunk->voxels[i].id;
@@ -213,6 +213,7 @@ void NetSession::ProcessPackage(NetPackage *pkg)
                         }
 
                         sharedLevel->chunks->putChunk(chunk);
+
                         chunk->updateHeights();
                         Lighting::prebuildSkyLight(chunk.get(), sharedLevel->content->getIndices());
                         chunk->setLoaded(true);
@@ -224,15 +225,15 @@ void NetSession::ProcessPackage(NetPackage *pkg)
                 {
                     if(b) continue;
 
-                    ubyte *chunkData = ServerGetChunk((int)msg->coordinates.x, (int)msg->coordinates.z);
+                    ubyte *chunkData = ServerGetChunk((int)msg.coordinates.x, (int)msg.coordinates.z);
 
                     if(chunkData)
                     {
                         b = true;
                         NetMessage fm = NetMessage();
                         fm.action = NetAction::FETCH;
-                        fm.coordinates.x = msg->coordinates.x;
-                        fm.coordinates.z = msg->coordinates.z;
+                        fm.coordinates.x = msg.coordinates.x;
+                        fm.coordinates.z = msg.coordinates.z;
                         fm.data = chunkData;
                         RegisterMessage(fm);
                     }
@@ -259,21 +260,21 @@ void NetSession::ServerRoutine()
         }
 
         NetPackage servPkg = NetPackage();
-        for(int i = 0; i < pkgToSend.msgCount; i++)
-        {
-            servPkg.messages[i] = pkgToSend.messages[i];
-            servPkg.msgCount++;
-        }
         NetMessage upd = NetMessage();
         upd.action = NetAction::SERVER_UPDATE;
-        servPkg.messages[servPkg.msgCount++] = upd;
+        servPkg.AddMessage(upd);
+
+        for(size_t i = 0; i < MAX_MESSAGES_PER_PACKET && !messagesBuffer.empty(); ++i)
+        {
+            servPkg.AddMessage(messagesBuffer[messagesBuffer.size() - i - 1]);
+            messagesBuffer.pop_back();
+        }
          
         for(NetUser *usr : users)
         {
-            if(usr->isConnected && usr->userID != 0)
-                socket.SendPackage(&servPkg, usr->userID);
+            if(usr->isConnected && usr->GetUniqueUserID() != 0)
+                socket.SendPackage(&servPkg, usr->GetUniqueUserID());
         }
-        pkgToSend = NetPackage();
     }
 }
 
@@ -285,11 +286,6 @@ void NetSession::ClientRoutine()
         while(socket.RecievePackage(&inPkg))
         {
             ProcessPackage(&inPkg);
-
-            // for(NetMessage msg : inPkg.messages)
-            // {
-            //     free(msg.data);
-            // }
         }
     }
 
@@ -306,10 +302,17 @@ void NetSession::ClientRoutine()
             chunksQueue.erase(it->first);
         }
 
-        if(pkgToSend.msgCount > 0)
+        NetPackage pkgToSend = NetPackage();
+
+        for(size_t i = 0; i < MAX_MESSAGES_PER_PACKET && !messagesBuffer.empty(); ++i)
+        {
+            pkgToSend.AddMessage(messagesBuffer[i]);
+            messagesBuffer.pop_back();
+        }
+
+        if(pkgToSend.GetMessagesCount() > 0)
         {
             socket.SendPackage(&pkgToSend, socket.sockfd);
-            pkgToSend = NetPackage();
         }
         serverUpdate = false;
     }
@@ -320,7 +323,7 @@ void NetSession::ClientFetchChunk(std::shared_ptr<Chunk> chunk, int x, int z)
     chunksQueue.insert_or_assign({x, z}, chunk);
 }
 
-ubyte *NetSession::ServerGetChunk(int x, int z)
+ubyte *NetSession::ServerGetChunk(int x, int z) const
 {
     std::shared_ptr<Chunk> chunk = sharedLevel->chunksStorage->get(x, z);
 
@@ -331,7 +334,6 @@ ubyte *NetSession::ServerGetChunk(int x, int z)
             return chunk->encode();
         }
     }
-    // TODO: generate chunk
     return nullptr;
 }
 
@@ -357,13 +359,9 @@ void NetSession::Update(float delta) noexcept
     }
 }
 
-void NetSession::RegisterMessage(const NetMessage& msg) noexcept
-{    
-    if(pkgToSend.msgCount >= MAX_PACKAGE_SIZE - 1)
-        return;
-
-    pkgToSend.messages[pkgToSend.msgCount] = msg;
-    pkgToSend.msgCount++;
+void NetSession::RegisterMessage(const NetMessage msg) noexcept
+{
+    messagesBuffer.push_back(msg);
 }
 
 NetMode NetSession::GetSessionType() const

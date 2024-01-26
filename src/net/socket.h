@@ -4,6 +4,8 @@
 #include "netutils.h"
 #include <stdlib.h>
 #include <vector>
+#include "netpackage.h"
+
 #include "../util/stringutil.h"
 
 #ifdef _WIN32
