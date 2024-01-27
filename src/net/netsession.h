@@ -84,8 +84,8 @@ private:
 
 public:
     static NetSession *GetSessionInstance();
-    static bool StartServer(Engine *eng);
-    static bool ConnectToSession(const char *ip, Engine *eng, bool versionChecking, bool contentChecking);
+    static bool StartServer(Engine *eng, const int port);
+    static bool ConnectToSession(const char *ip, const int port, Engine *eng, bool versionChecking, bool contentChecking);
     static void TerminateSession();
     static NetUser *GetUser(size_t i); // user 0 is constantly the local user
     static const ConnectionData *GetConnectionData() { return connData; }

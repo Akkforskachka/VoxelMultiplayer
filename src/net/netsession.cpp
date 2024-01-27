@@ -51,7 +51,7 @@ NetSession::~NetSession()
     users.clear();
 }
 
-bool NetSession::StartServer(Engine *engine)
+bool NetSession::StartServer(Engine *engine, const int port)
 {
     if(sessionInstance)
     {
@@ -61,7 +61,7 @@ bool NetSession::StartServer(Engine *engine)
     sessionInstance = new NetSession(NetMode::PLAY_SERVER);
 
     sessionInstance->socket = Socket();
-    if(sessionInstance->socket.StartupServer(NET_PORT))
+    if(sessionInstance->socket.StartupServer(port))
     {
         std::cout << "[INFO]: Creating NetSession. NetMode = " << sessionInstance->netMode << std::endl;
         sessionInstance->addUser(NetUserRole::AUTHORITY, 0);
@@ -71,7 +71,7 @@ bool NetSession::StartServer(Engine *engine)
     return false;
 }
 
-bool NetSession::ConnectToSession(const char *ip, Engine *eng, bool versionChecking, bool contentChecking)
+bool NetSession::ConnectToSession(const char *ip, const int port, Engine *eng, bool versionChecking, bool contentChecking)
 {
     if(sessionInstance) 
     {
@@ -80,7 +80,7 @@ bool NetSession::ConnectToSession(const char *ip, Engine *eng, bool versionCheck
     sessionInstance = new NetSession(NetMode::CLIENT);
 
     sessionInstance->socket = Socket();
-    if(!sessionInstance->socket.ConnectTo(ip, NET_PORT))
+    if(!sessionInstance->socket.ConnectTo(ip, port))
     {
         std::cout << "[ERROR]: Couldn't connect for some reason" << std::endl;
         return false;

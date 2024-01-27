@@ -196,7 +196,7 @@ void open_world(std::string name, Engine* engine, NetMode stp) {
         }
         else
         {
-            if(NetSession::StartServer(engine))
+            if(NetSession::StartServer(engine, NET_PORT))
             {
                 engine->setScreen(std::make_shared<LevelScreen>(engine, level));
             }
@@ -435,7 +435,7 @@ void create_multiplayer_panel(Engine* engine, PagesControl* menu) {
         engine->loadAllPacks();
         engine->loadContent();
 
-        if(NetSession::ConnectToSession(addr8.c_str(), engine, true, true))
+        if(NetSession::ConnectToSession(addr8.c_str(), NET_PORT, engine, true, true))
         {
             auto folder = engine->getPaths()->getWorldsFolder()/fs::u8path(NetSession::GetConnectionData()->name + "_net");
             fs::create_directories(folder);
