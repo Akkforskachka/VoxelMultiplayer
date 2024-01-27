@@ -51,7 +51,7 @@ NetSession::~NetSession()
     users.clear();
 }
 
-bool NetSession::StartServer(Engine *engine, const int port)
+bool NetSession::StartSession(Engine *engine, const int port)
 {
     if(sessionInstance)
     {
@@ -78,57 +78,62 @@ bool NetSession::ConnectToSession(const char *ip, const int port, Engine *eng, b
         return false;
     }
     sessionInstance = new NetSession(NetMode::CLIENT);
-
+    std::cout << "Connecting to " << ip << std::endl;
     sessionInstance->socket = Socket();
     if(!sessionInstance->socket.ConnectTo(ip, port))
     {
-        std::cout << "[ERROR]: Couldn't connect for some reason" << std::endl;
+        std::cout << "[ERROR]: Couldn't connect. Error code: " << errno << std::endl;
         return false;
     }
     std::cout << "[INFO]: Connected, waiting for initial message" << std::endl;
     char buff[NetSize()];
-    sessionInstance->socket.RecieveMessage(buff, NetSize(), sessionInstance->socket.sockfd, true);
-    std::cout << "[INFO]: Connection message: " << buff << std::endl;
-
-    std::unique_ptr<dynamic::Map> data = json::parse(buff);
-    connData = new ConnectionData();
-
-    data->num("seed", connData->seed);
-    data->num("count", connData->blockCount);
-    data->map("version")->num("major", connData->major);
-    data->map("version")->num("minor", connData->minor);
-    data->num("user", connData->userID );
-    connData->name = data->getStr("name", "err");
-
-    // for(json::Value *val : data->arr("content")->values)
-    // {
-    //     if(val->type == json::valtype::string)
-    //     {
-    //         connData.blockNames.push_back(val->value.str->c_str());
-    //     }
-    // }
-
-    if(versionChecking)
+    if(sessionInstance->socket.RecieveMessage(buff, NetSize(), sessionInstance->socket.sockfd, true) > 0)
     {
-        if(connData->major != ENGINE_VERSION_MAJOR || connData->minor != ENGINE_VERSION_MINOR)
-            return false;
-    }
+        std::cout << "[INFO]: Connection message: " << buff << std::endl;
 
-    if(contentChecking)
-    {
-        if(connData->blockCount != eng->getContent()->getIndices()->countBlockDefs())
-            return false;
+        std::unique_ptr<dynamic::Map> data = json::parse(buff);
+        connData = new ConnectionData();
 
-        // for(std::string name : connData.blockNames)
+        data->num("seed", connData->seed);
+        data->num("count", connData->blockCount);
+        data->map("version")->num("major", connData->major);
+        data->map("version")->num("minor", connData->minor);
+        data->num("user", connData->userID );
+        connData->name = data->getStr("name", "err");
+
+        // for(json::Value *val : data->arr("content")->values)
         // {
-        //     if(engine->getContent()->findBlock(name) == nullptr)
+        //     if(val->type == json::valtype::string)
         //     {
-        //         return false;
+        //         connData.blockNames.push_back(val->value.str->c_str());
         //     }
         // }
+
+        if(versionChecking)
+        {
+            if(connData->major != ENGINE_VERSION_MAJOR || connData->minor != ENGINE_VERSION_MINOR)
+                return false;
+        }
+
+        if(contentChecking)
+        {
+            if(connData->blockCount != eng->getContent()->getIndices()->countBlockDefs())
+                return false;
+
+            // for(std::string name : connData.blockNames)
+            // {
+            //     if(engine->getContent()->findBlock(name) == nullptr)
+            //     {
+            //         return false;
+            //     }
+            // }
+        }
+        sessionInstance->addUser(NetUserRole::LOCAL, connData->userID);
+        return true;
     }
-    sessionInstance->addUser(NetUserRole::LOCAL, connData->userID);
-    return true;
+    std::cout << "[ERROR]: Couldn't get connection message. Error code: " << errno << std::endl;
+    TerminateSession();
+    return false;
 }
 void NetSession::handleConnection(socketfd ui)
 {
@@ -180,8 +185,6 @@ void NetSession::SetSharedLevel(Level *sl) noexcept
         std::cout << "shared level been set\n";
     }
 }
-
-
 
 NetUser *NetSession::addUser(NetUserRole role, int id)
 {

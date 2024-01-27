@@ -83,8 +83,11 @@ private:
     static NetSession *sessionInstance;
 
 public:
+    static int port;
+
+public:
     static NetSession *GetSessionInstance();
-    static bool StartServer(Engine *eng, const int port);
+    static bool StartSession(Engine *eng, const int port);
     static bool ConnectToSession(const char *ip, const int port, Engine *eng, bool versionChecking, bool contentChecking);
     static void TerminateSession();
     static NetUser *GetUser(size_t i); // user 0 is constantly the local user
