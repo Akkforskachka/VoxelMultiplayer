@@ -309,12 +309,6 @@ void NetSession::serverRoutine()
         servPkg.AddMessage(upd);
 
         packMessages(&servPkg);
-
-        for(size_t i = 0; servPkg.GetMessagesCount() < MAX_MESSAGES_PER_PACKET && !messagesBuffer.empty(); ++i)
-        {
-            servPkg.AddMessage(messagesBuffer[messagesBuffer.size() - i - 1]);
-            messagesBuffer.pop_back();
-        }
          
         for(auto pair : users)
         {
