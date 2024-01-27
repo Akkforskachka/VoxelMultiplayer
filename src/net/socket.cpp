@@ -97,20 +97,17 @@ bool Socket::UpdateServer(const std::vector<NetUser *> ins)
 
     for(NetUser *usr : ins)
     {
+        if(usr->GetUniqueUserID() == 0) continue;;
+        
         char buff[NetSize()] = "";
 
         if(usr->isConnected == false)
             continue;
         
         int bytes = RecieveMessage(buff, NetSize(), usr->GetUniqueUserID(), false);
-        if(bytes >= 0)
+        if(bytes > 0)
         {
             Deserialize(buff);
-        }
-        else if(bytes < 0)
-        {
-            // std::cout << errno << " " << sockfd << std::endl;
-            // usr->isConnected = false;
         }
     }
 
@@ -126,7 +123,8 @@ bool Socket::UpdateClient()
     assert(0 && "TODO: Implement windows API");
 #else
     char buff[NetSize()] = "";
-    if(RecieveMessage(buff, NetSize(), sockfd, false) > 0)
+    int bytes = RecieveMessage(buff, NetSize(), sockfd, false);
+    if(bytes > 0)
     {
         Deserialize(buff);
         return true;
@@ -156,8 +154,6 @@ int Socket::RecieveMessage(char *buff, int length, socketfd sen, bool wait)
     assert(0 && "TODO: Implement windows API");
 #else
     int r = recv(sen, buff, length, wait ? 0 : MSG_DONTWAIT);
-    // if(r > 0)
-    //     std::cout << "read " << buff << std::endl;
     return r;
 #endif // _WIN32
 }
@@ -170,8 +166,6 @@ int Socket::SendMessage(const char *msg, int length, socketfd dest, bool wait)
     assert(0 && "TODO: Implement windows API");
 #else 
     int r = send(dest, msg, length, wait ? 0 : MSG_DONTWAIT);
-    // if(r > 0)
-    //     std::cout << "sent " << msg << std::endl;
     return r;
 #endif // _WIN32
 }
@@ -185,7 +179,7 @@ void Socket::Deserialize(const char *buff)
     }
     catch(const std::exception& e)
     {
-        std::cerr << e.what() << std::endl;
+        std::cerr << e.what() << " in message " << buff << std::endl;
         return;
     }        
 

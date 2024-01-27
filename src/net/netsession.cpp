@@ -218,7 +218,6 @@ void NetSession::processPackage(NetPackage *pkg)
                 WorldRenderer::fog = msg.coordinates.y;
             break;
             case NetAction::MODIFY:
-                std::cout << "got a modify action! " << msg.coordinates.x << " " << msg.coordinates.y << " " << msg.coordinates.z << std::endl;
                 sharedLevel->chunks->set((int)msg.coordinates.x, (int)msg.coordinates.y, (int)msg.coordinates.z, msg.block, msg.states);
                 messagesBuffer.pop_back(); // some shit again
             break;
@@ -310,7 +309,9 @@ void NetSession::serverRoutine()
         for(NetUser *usr : users)
         {
             if(usr->isConnected && usr->GetUniqueUserID() != 0)
+            {
                 socket.SendPackage(&servPkg, usr->GetUniqueUserID());
+            }
         }
     }
 }
