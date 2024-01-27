@@ -302,9 +302,11 @@ void create_main_menu_panel(Engine* engine, PagesControl* menu) {
 
 typedef std::function<void(const ContentPack& pack)> packconsumer;
 
+const int PACKS_PANEL_WIDTH = 550;
+
 std::shared_ptr<Panel> create_packs_panel(const std::vector<ContentPack>& packs, Engine* engine, bool backbutton, packconsumer callback) {
     auto assets = engine->getAssets();
-    auto panel = std::make_shared<Panel>(vec2(400, 200), vec4(5.0f));
+    auto panel = std::make_shared<Panel>(vec2(PACKS_PANEL_WIDTH, 200), vec4(5.0f));
     panel->color(vec4(1.0f, 1.0f, 1.0f, 0.07f));
     panel->maxLength(400);
     panel->scrollable(true);
@@ -318,7 +320,7 @@ std::shared_ptr<Panel> create_packs_panel(const std::vector<ContentPack>& packs,
         }
         auto idlabel = std::make_shared<Label>("["+pack.id+"]");
         idlabel->color(vec4(1, 1, 1, 0.5f));
-        packpanel->add(idlabel, vec2(360-idlabel->size().x, 2));
+        packpanel->add(idlabel, vec2(PACKS_PANEL_WIDTH-40-idlabel->size().x, 2));
 
         auto titlelabel = std::make_shared<Label>(pack.title);
         packpanel->add(titlelabel, vec2(78, 6));
@@ -327,7 +329,7 @@ std::shared_ptr<Panel> create_packs_panel(const std::vector<ContentPack>& packs,
         if (assets->getTexture(icon) == nullptr) {
             auto iconfile = pack.folder/fs::path("icon.png");
             if (fs::is_regular_file(iconfile)) {
-                assets->store(png::load_texture(iconfile), icon);
+                assets->store(png::load_texture(iconfile.string()), icon);
             } else {
                 icon = "gui/no_icon";
             }
@@ -336,7 +338,7 @@ std::shared_ptr<Panel> create_packs_panel(const std::vector<ContentPack>& packs,
         if (!pack.creator.empty()) {
             auto creatorlabel = std::make_shared<Label>("@"+pack.creator);
             creatorlabel->color(vec4(0.8f, 1.0f, 0.9f, 0.7f));
-            packpanel->add(creatorlabel, vec2(360-creatorlabel->size().x, 60));
+            packpanel->add(creatorlabel, vec2(PACKS_PANEL_WIDTH-40-creatorlabel->size().x, 60));
         }
 
         auto descriptionlabel = std::make_shared<Label>(pack.description);
@@ -356,7 +358,7 @@ std::shared_ptr<Panel> create_packs_panel(const std::vector<ContentPack>& packs,
 // TODO: refactor
 void create_content_panel(Engine* engine, PagesControl* menu) {
     auto paths = engine->getPaths();
-    auto mainPanel = create_page(engine, "content", 400, 0.0f, 5);
+    auto mainPanel = create_page(engine, "content", PACKS_PANEL_WIDTH, 0.0f, 5);
 
     std::vector<ContentPack> scanned;
     ContentPack::scan(engine->getPaths(), scanned);
@@ -571,7 +573,7 @@ void create_settings_panel(Engine* engine, PagesControl* menu) {
             return engine->getSettings().chunks.loadDistance;
         });
         trackbar->consumer([=](double value) {
-            engine->getSettings().chunks.loadDistance = value;
+            engine->getSettings().chunks.loadDistance = static_cast<uint>(value);
         });
         panel->add(trackbar);
     }
@@ -587,7 +589,7 @@ void create_settings_panel(Engine* engine, PagesControl* menu) {
             return engine->getSettings().chunks.loadSpeed;
         });
         trackbar->consumer([=](double value) {
-            engine->getSettings().chunks.loadSpeed = value;
+            engine->getSettings().chunks.loadSpeed = static_cast<uint>(value);
         });
         panel->add(trackbar);
     }
