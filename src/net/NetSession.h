@@ -53,17 +53,6 @@ class Level;
 class Engine;
 class Chunk;
 
-struct ConnectionData
-{
-    uint64_t seed;
-    size_t blockCount;
-    int userID;
-    std::vector<std::string> blockNames;
-    std::string name;
-    int major;
-    int minor;
-};
-
 class server_client NetSession
 {
 private:

@@ -102,14 +102,16 @@ bool NetSession::ConnectToSession(const char *ip, const int port, Engine *eng, b
         data->map("version")->num("minor", connData->minor);
         data->num("user", connData->userID );
         connData->name = data->getStr("name", "err");
-
-        // for(json::Value *val : data->arr("content")->values)
-        // {
-        //     if(val->type == json::valtype::string)
-        //     {
-        //         connData.blockNames.push_back(val->value.str->c_str());
-        //     }
-        // }
+        
+        size_t size = data->list("content")->size();
+        for(size_t i = 0; i < size; i++)
+        {
+            auto val = data->list("content")->values[i].get();
+            if(val->type == dynamic::valtype::string)
+            {
+                connData->contentNames.push_back(val->value.str->c_str());
+            }
+        }
 
         if(versionChecking)
         {
@@ -122,13 +124,17 @@ bool NetSession::ConnectToSession(const char *ip, const int port, Engine *eng, b
             if(connData->blockCount != eng->getContent()->getIndices()->countBlockDefs())
                 return false;
 
-            // for(std::string name : connData.blockNames)
-            // {
-            //     if(engine->getContent()->findBlock(name) == nullptr)
-            //     {
-            //         return false;
-            //     }
-            // }
+            // check if player have the same content packs
+
+            for(std::string name : connData->contentNames)
+            {
+                if(std::find_if(eng->getContentPacks().begin(), 
+                            eng->getContentPacks().end(), 
+                            [name] (const ContentPack &p) { return p.title == name; }) == eng->getContentPacks().end())
+                            {
+                                return false;
+                            }
+            }
         }
         sessionInstance->addUser(NetUserRole::LOCAL, connData->userID);
         return true;
@@ -156,14 +162,13 @@ void NetSession::handleConnection(socketfd ui)
     verObj.put("major", ENGINE_VERSION_MAJOR);
     verObj.put("minor", ENGINE_VERSION_MINOR);
 
-    /* sharing the whole list of block names can make message too large for sending and recieving*/
+    dynamic::List& cont = worldData.putList("content");
 
-    // json::JArray& cont = worldData.putArray("content");
-
-    // for(size_t i = 0; i < blCount; i++)
-    // {
-    //     cont.put(sharedLevel->content->indices->getBlockDefs()[i]->name);
-    // }
+    size_t size = engine->getContentPacks().size();
+    for(size_t i = 0; i < size; i++)
+    {
+        cont.put(engine->getContentPacks()[i].title);
+    }
 
     std::string msg = json::stringify(&worldData, false, "");
     socket.SendMessage(msg.c_str(), msg.length(), ui, false);

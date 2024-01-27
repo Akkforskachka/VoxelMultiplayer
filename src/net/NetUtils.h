@@ -62,6 +62,17 @@ struct NetMessage
     float lifeTime; // todo: ignore message if lifeTime > timeToLive
 };
 
+struct ConnectionData
+{
+    uint64_t seed;
+    size_t blockCount;
+    int userID;
+    std::vector<std::string> contentNames;
+    std::string name;
+    int major;
+    int minor;
+};
+
 constexpr int NetSize()  { return 9128; } // todo
 
 
