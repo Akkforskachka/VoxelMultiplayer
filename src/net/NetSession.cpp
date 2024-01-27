@@ -206,7 +206,9 @@ void NetSession::packMessages(NetPackage *dst)
 {
     for(size_t i = 0; dst->GetMessagesCount() < MAX_MESSAGES_PER_PACKET  && !messagesBuffer.empty(); ++i)
     {
-        dst->AddMessage(messagesBuffer[i]);
+        size_t index = messagesBuffer.size() - i - 1;
+        if (index >= messagesBuffer.size()) break;
+        dst->AddMessage(messagesBuffer[index]);
         messagesBuffer.pop_back();
     }
 }
