@@ -78,7 +78,7 @@ bool Socket::ConnectTo(const char *ip, int port)
 #endif // _WIN32
 }
 
-bool Socket::UpdateServer(const std::vector<NetUser *> ins)
+bool Socket::UpdateServer(const std::unordered_map<uniqueUserID, NetUser *> ins)
 {
     if(isRunning == false) return false; 
 
@@ -95,8 +95,9 @@ bool Socket::UpdateServer(const std::vector<NetUser *> ins)
         connected.push_back(clifd);
     }
 
-    for(NetUser *usr : ins)
+    for(auto pair : ins)
     {
+        NetUser *usr = pair.second;
         if(usr->GetUniqueUserID() == 0) continue;;
         
         char buff[NetSize()] = "";

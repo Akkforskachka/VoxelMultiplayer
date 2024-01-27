@@ -16,6 +16,8 @@
 #include "../voxels/ChunksStorage.h"
 #include "../lighting/Lighting.h"
 #include "../frontend/WorldRenderer.h"
+#include "../logic/PlayerController.h"
+#include "../logic/BlocksController.h"
 
 namespace fs = std::filesystem;
 
@@ -43,15 +45,11 @@ NetSession::NetSession(NetMode mode) : netMode(mode)
 NetSession::~NetSession()
 {
     std::cout << "[INFO]: Terminating session" << std::endl;
-    for(NetUser *usr : users)
-    {
-        delete usr;
-    }
     socket.CloseSocket();
     users.clear();
 }
 
-bool NetSession::StartSession(Engine *engine, const int port)
+bool NetSession::StartSession(Engine *eng, const int port)
 {
     if(sessionInstance)
     {
@@ -59,7 +57,7 @@ bool NetSession::StartSession(Engine *engine, const int port)
     }
 
     sessionInstance = new NetSession(NetMode::PLAY_SERVER);
-
+    sessionInstance->engine = eng;
     sessionInstance->socket = Socket();
     if(sessionInstance->socket.StartupServer(port))
     {
@@ -77,9 +75,13 @@ bool NetSession::ConnectToSession(const char *ip, const int port, Engine *eng, b
     {
         return false;
     }
+    
     sessionInstance = new NetSession(NetMode::CLIENT);
     std::cout << "Connecting to " << ip << std::endl;
     sessionInstance->socket = Socket();
+
+    sessionInstance->engine = eng;
+
     if(!sessionInstance->socket.ConnectTo(ip, port))
     {
         std::cout << "[ERROR]: Couldn't connect. Error code: " << errno << std::endl;
@@ -186,12 +188,12 @@ void NetSession::SetSharedLevel(Level *sl) noexcept
     }
 }
 
-NetUser *NetSession::addUser(NetUserRole role, int id)
+NetUser *NetSession::addUser(NetUserRole role, uniqueUserID id)
 {
-    NetUser *user = new NetUser(role, id);
+    NetUser *user = new NetUser(role, nullptr, id);
     user->isConnected = true;
     std::cout << "[INFO]: Adding NetUser with userID  = "  << user->GetUniqueUserID() << std::endl;
-    users.push_back(user);
+    users.insert_or_assign(id, user);
     return user;
 }
 
@@ -309,11 +311,11 @@ void NetSession::serverRoutine()
             messagesBuffer.pop_back();
         }
          
-        for(NetUser *usr : users)
+        for(auto pair : users)
         {
-            if(usr->isConnected && usr->GetUniqueUserID() != 0)
+            if(pair.second->isConnected && pair.first != 0)
             {
-                socket.SendPackage(&servPkg, usr->GetUniqueUserID());
+                socket.SendPackage(&servPkg, pair.first);
             }
         }
     }

@@ -48,6 +48,7 @@
                                             }                                                       \
                                         } while(0)
 class Player;
+class BlocksController;
 class Level;
 class Engine;
 class Chunk;
@@ -67,9 +68,11 @@ class server_client NetSession
 {
 private:
     NetMode netMode;
-    std::vector<NetUser *> users;
+    std::unordered_map<uniqueUserID, NetUser *> users;
     Socket socket;
     Level *sharedLevel;
+    Engine *engine;
+    BlocksController *blocks;
     // NetPackage pkgToSend;
 
     std::vector<NetMessage> messagesBuffer;
@@ -112,7 +115,7 @@ private:
     client void clientRoutine();
     server_client void processPackage(NetPackage *pkg);
     server ubyte *serverGetChunk(int x, int z) const;
-    server_client NetUser *addUser(NetUserRole role, int id);
+    server_client NetUser *addUser(NetUserRole role, uniqueUserID id);
     server_client void packMessages(NetPackage *dst);
 };
 

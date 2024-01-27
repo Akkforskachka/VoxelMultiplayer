@@ -11,7 +11,7 @@ class server_client NetUser
 
 private:
     // Player *localPlayer;
-    // PlayerController *localController;
+    PlayerController *playerController;
     NetUserRole role;
 
     std::string userName;
@@ -22,12 +22,14 @@ public:
     bool isConnected;
 
 public:
-    NetUser(NetUserRole r, int ui);
+    NetUser(NetUserRole r, PlayerController *pcr, int ui);
     ~NetUser();
 
 public:
     // Player *GetLocalPlayer() const;
+    PlayerController *GetPlayerController() const;
     NetUserRole GetNetRole() const;
+
     uniqueUserID GetUniqueUserID() const;
     std::string GetUserName() const;
 };

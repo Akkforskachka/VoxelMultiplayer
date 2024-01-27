@@ -1,8 +1,9 @@
 #include "NetUser.h"
 
-NetUser::NetUser(NetUserRole r, int ui) 
+NetUser::NetUser(NetUserRole r, PlayerController *pcr, int ui) 
     : role(r),
-    userID(ui)
+    userID(ui),
+    playerController(pcr)
 {
 
 }

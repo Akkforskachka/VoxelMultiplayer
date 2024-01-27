@@ -56,7 +56,7 @@ public:
 public:
     server_client bool SendPackage(NetPackage *pckg, socketfd sock);
     server_client bool RecievePackage(NetPackage *pckg);
-    server bool UpdateServer(const std::vector<NetUser *> ins);
+    server bool UpdateServer(const std::unordered_map<uniqueUserID, NetUser *> ins);
     client bool UpdateClient();
 
 public:
