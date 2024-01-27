@@ -110,6 +110,7 @@ private:
     server_client void processPackage(NetPackage *pkg);
     server ubyte *serverGetChunk(int x, int z) const;
     server_client NetUser *addUser(NetUserRole role, int id);
+    server_client void packMessages(NetPackage *dst);
 };
 
 #endif // NET_SESSION_H

@@ -192,6 +192,15 @@ NetUser *NetSession::addUser(NetUserRole role, int id)
     return user;
 }
 
+void NetSession::packMessages(NetPackage *dst)
+{
+    for(size_t i = 0; dst->GetMessagesCount() < MAX_MESSAGES_PER_PACKET  && !messagesBuffer.empty(); ++i)
+    {
+        dst->AddMessage(messagesBuffer[i]);
+        messagesBuffer.pop_back();
+    }
+}
+
 void NetSession::processPackage(NetPackage *pkg)
 {
     bool b = false;
@@ -209,6 +218,7 @@ void NetSession::processPackage(NetPackage *pkg)
                 WorldRenderer::fog = msg.coordinates.y;
             break;
             case NetAction::MODIFY:
+                std::cout << "got a modify action! " << msg.coordinates.x << " " << msg.coordinates.y << " " << msg.coordinates.z << std::endl;
                 sharedLevel->chunks->set((int)msg.coordinates.x, (int)msg.coordinates.y, (int)msg.coordinates.z, msg.block, msg.states);
                 messagesBuffer.pop_back(); // some shit again
             break;
@@ -289,6 +299,8 @@ void NetSession::serverRoutine()
         }
         servPkg.AddMessage(upd);
 
+        packMessages(&servPkg);
+
         for(size_t i = 0; servPkg.GetMessagesCount() < MAX_MESSAGES_PER_PACKET && !messagesBuffer.empty(); ++i)
         {
             servPkg.AddMessage(messagesBuffer[messagesBuffer.size() - i - 1]);
@@ -329,11 +341,7 @@ void NetSession::clientRoutine()
 
         NetPackage pkgToSend = NetPackage();
 
-        for(size_t i = 0; pkgToSend.GetMessagesCount() < MAX_MESSAGES_PER_PACKET  && !messagesBuffer.empty(); ++i)
-        {
-            pkgToSend.AddMessage(messagesBuffer[i]);
-            messagesBuffer.pop_back();
-        } 
+        packMessages(&pkgToSend);
 
         if(pkgToSend.GetMessagesCount() > 0)
         {
