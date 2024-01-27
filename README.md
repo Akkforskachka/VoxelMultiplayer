@@ -11,6 +11,22 @@ Linux - In a progress
 
 Windows - Not Implemented
 
+# How to use
+```cpp
+bool NetSession::StartSession(Engine *eng, const int port);
+```
+Hosts the session with given port. Returns false on error.
+
+```cpp
+bool NetSession::ConnectToSession(const char *ip, const int port, Engine *eng, bool versionChecking, bool contentChecking)
+```
+Connects to session by given ip-addres and port. Additional parameters are should client check for version matching and should client check for content packs matching.
+
+```cpp
+void SetSharedLevel(Level *sl) noexcept;
+```
+If session is valid, sets shared level to given. Warning: full functionality is not implemented yet, so far it just have to be called when level loads, otherwise NetSession never updates. In future updates it will be updated.
+
 # NetUtils
 
 ## NetModes
