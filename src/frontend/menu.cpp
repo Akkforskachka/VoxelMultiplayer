@@ -329,7 +329,7 @@ void create_multiplayer_panel(Engine* engine, PagesControl* menu) {
 
     TextBox* addrInput; {
         panel->add(std::make_shared<Label>(langs::get(L"IP Addres", L"multiplayer")));
-        addrInput = new TextBox(std::to_wstring(randU64()), vec4(6.0f));
+        addrInput = new TextBox(L"192.168.1.1", vec4(6.0f));
         panel->add(addrInput);
     }
     panel->add((new Button(langs::get(L"Connect", L"multiplayer"), vec4(10.f)))
