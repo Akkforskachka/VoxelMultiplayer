@@ -1,4 +1,4 @@
-#include "netsession.h"
+#include "NetSession.h"
 
 #include <iostream>
 #include <stdlib.h>

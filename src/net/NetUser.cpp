@@ -1,4 +1,4 @@
-#include "netuser.h"
+#include "NetUser.h"
 
 NetUser::NetUser(NetUserRole r, int ui) 
     : role(r),

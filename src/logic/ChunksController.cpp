@@ -18,7 +18,7 @@
 #include "../maths/voxmaths.h"
 #include "../util/timeutil.h"
 
-#include "../net/netsession.h"
+#include "../net/NetSession.h"
 
 const uint MAX_WORK_PER_FRAME = 64;
 const uint MIN_SURROUNDING = 9;

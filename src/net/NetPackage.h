@@ -1,7 +1,7 @@
 #ifndef NETPACKAGE_H
 #define NETPACKAGE_H
 
-#include "netutils.h"
+#include "NetUtils.h"
 
 class NetPackage
 {

@@ -1,4 +1,4 @@
-#include "netpackage.h"
+#include "NetPackage.h"
 
 
 NetPackage::NetPackage()

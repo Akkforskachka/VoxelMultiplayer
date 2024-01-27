@@ -1,10 +1,10 @@
 #ifndef SOCKET_H
 #define SOCKET_H
 
-#include "netutils.h"
+#include "NetUtils.h"
 #include <stdlib.h>
 #include <vector>
-#include "netpackage.h"
+#include "NetPackage.h"
 
 #include "../util/stringutil.h"
 

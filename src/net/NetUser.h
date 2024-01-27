@@ -1,7 +1,7 @@
 #ifndef NET_USER_H
 #define NET_USER_H
 
-#include "netutils.h"
+#include "NetUtils.h"
 
 class Player;
 class PlayerController;

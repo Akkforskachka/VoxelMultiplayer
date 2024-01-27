@@ -1,11 +1,11 @@
-#include "socket.h"
+#include "Socket.h"
 #include <strings.h>
 #include <string.h>
 #include <iostream>
 #include <iterator>
 #include <numeric>
 #include "../coders/json.h"
-#include "netuser.h"
+#include "NetUser.h"
 #include "../coders/gzip.h"
 #include "../voxels/Chunk.h"
 

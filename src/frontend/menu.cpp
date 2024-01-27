@@ -27,7 +27,7 @@
 #include "../content/Content.h"
 #include "../content/ContentLUT.h"
 #include "../content/ContentPack.h"
-#include "../net/netsession.h"
+#include "../net/NetSession.h"
 
 #include "gui/gui_util.h"
 #include "locale/langs.h"

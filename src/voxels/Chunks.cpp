@@ -12,7 +12,7 @@
 #include "../maths/voxmaths.h"
 #include "../maths/aabb.h"
 #include "../maths/rays.h"
-#include "../net/netsession.h"
+#include "../net/NetSession.h"
 
 #include <math.h>
 #include <limits.h>

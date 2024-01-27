@@ -1,10 +1,10 @@
 #ifndef NET_SESSION_H
 #define NET_SESSION_H
 
-#include "netutils.h"
-#include "netuser.h"
-#include "socket.h"
-#include "netpackage.h"
+#include "NetUtils.h"
+#include "NetUser.h"
+#include "Socket.h"
+#include "NetPackage.h"
 #include <stdlib.h>
 #include <vector>
 #include "../voxels/ChunksStorage.h"

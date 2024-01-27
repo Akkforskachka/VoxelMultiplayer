@@ -6,7 +6,7 @@
 #include "ChunksController.h"
 
 #include "scripting/scripting.h"
-#include "../net/netsession.h"
+#include "../net/NetSession.h"
 
 LevelController::LevelController(EngineSettings& settings, Level* level) 
     : settings(settings), level(level) {
