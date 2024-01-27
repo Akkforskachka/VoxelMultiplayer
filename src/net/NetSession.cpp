@@ -229,7 +229,8 @@ void NetSession::processPackage(NetPackage *pkg)
             break;
             case NetAction::MODIFY:
                 sharedLevel->chunks->set((int)msg.coordinates.x, (int)msg.coordinates.y, (int)msg.coordinates.z, msg.block, msg.states);
-                messagesBuffer.pop_back(); // some shit again
+                if(netMode == NetMode::CLIENT) // a bit better
+                    messagesBuffer.pop_back(); // but still some shit
             break;
             case NetAction::FETCH:
                 if(netMode == NetMode::CLIENT)
