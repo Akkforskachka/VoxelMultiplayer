@@ -97,7 +97,7 @@ private:
     ~NetSession();
 
 private:
-    server void handleConnection(int ui);
+    server void handleConnection(socketfd ui);
     server void serverRoutine();
     client void clientRoutine();
     server_client void processPackage(NetPackage *pkg);

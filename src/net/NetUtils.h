@@ -17,6 +17,10 @@
 #define MAX_MESSAGES_PER_PACKET 20
 
 #ifdef _WIN32
+    #include <WinSock2.h>>
+    #undef GetMessage
+    #undef SendMessage
+    typedef SOCKET socketfd;
 #else
     typedef int socketfd;
 #endif // _WIN32

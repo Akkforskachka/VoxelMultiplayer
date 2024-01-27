@@ -8,16 +8,19 @@
 
 #include "../util/stringutil.h"
 
+#include <stdlib.h>
+#include <vector>
+#include <stdio.h>
+
 #ifdef _WIN32
-    // TODO: windows API
+    #include <WS2tcpip.h>
 #else
-    #include <unistd.h>
-    #include <stdio.h>
     #include <sys/types.h>
+    #include <fcntl.h>
+    #include <unistd.h>
     #include <sys/socket.h>
     #include <netinet/in.h>
     #include <netdb.h>
-    #include <fcntl.h>
 #endif // _WIN32
 
 class NetUser;
@@ -26,9 +29,6 @@ class NetUser;
 class Socket
 {
 private:
-#ifdef _WIN32
-    // TODO: windows API
-#else
     server_client struct sockaddr_in serv_addr;
     server struct sockaddr_in cli_addr;
     server std::vector<socketfd> connected;
@@ -40,7 +40,6 @@ private:
 
     client struct hostent *serv;
     client bool isConnected;
-#endif // _WIN32
 
     server_client std::vector<NetPackage> inPkg;
 
@@ -60,7 +59,7 @@ public:
     client bool UpdateClient();
 
 public:
-    server bool HasNewConnection() const { return connected.size() > 0; }
+    server bool HasNewConnection() const { return !connected.empty(); }
     server socketfd GetNewConnection() { socketfd ret = connected[connected.size() - 1];
                                         connected.pop_back(); 
                                         return ret; }
