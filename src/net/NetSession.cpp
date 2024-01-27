@@ -422,6 +422,7 @@ void NetSession::RegisterMessage(const NetMessage msg) noexcept
 
 NetUser *NetSession::GetUser(size_t i)
 {
+    assert(0 && "DO NOT FUCKING USE IT NOW, YOU RISKY KIDDO!");
     if(sessionInstance)
     {
         return sessionInstance->users[i];

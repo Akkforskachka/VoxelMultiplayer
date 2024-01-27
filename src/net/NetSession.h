@@ -43,7 +43,6 @@
                                             msg.coordinates.z = c_z;  \
                                             if(NetSession *ses = NetSession::GetSessionInstance())  \
                                             {                                                       \
-                                                msg.usr_id = ses->GetUser(0)->GetUniqueUserID();         \
                                                 ses->RegisterMessage(msg);                          \
                                             }                                                       \
                                         } while(0)
@@ -61,7 +60,6 @@ private:
     Socket socket;
     Level *sharedLevel;
     Engine *engine;
-    BlocksController *blocks;
     // NetPackage pkgToSend;
 
     std::vector<NetMessage> messagesBuffer;
