@@ -58,9 +58,11 @@ struct NetMessage
     int block;
     uint8_t states;
     ubyte *data = nullptr;
+
+    float lifeTime; // todo: ignore message if lifeTime > timeToLive
 };
 
-constexpr int NetSize()  { return 5128; } // todo
+constexpr int NetSize()  { return 9128; } // todo
 
 
 #endif // NET_UTILS_H

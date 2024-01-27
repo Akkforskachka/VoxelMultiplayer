@@ -89,15 +89,12 @@ bool ChunksController::loadVisible(){
     const int ox = chunks->ox;
 	const int oz = chunks->oz;
 	
-	if(NetSession *ses = NetSession::GetSessionInstance())
+	if(NetSession::GetSessionType() == NetMode::CLIENT)
 	{
-		if(ses->GetSessionType() == NetMode::CLIENT)
-		{
-			chunk = std::make_shared<Chunk>(nearX+ox, nearZ+oz);
-			level->chunksStorage->store(chunk);
-			ses->ClientFetchChunk(chunk, nearX+ox, nearZ+oz);
-			return true;
-		}
+		chunk = std::make_shared<Chunk>(nearX+ox, nearZ+oz);
+		level->chunksStorage->store(chunk);
+		NetSession::GetSessionInstance()->ClientFetchChunk(chunk, nearX+ox, nearZ+oz);
+		return true;
 	}
 
 	createChunk(nearX+ox, nearZ+oz);

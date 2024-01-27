@@ -196,17 +196,13 @@ void open_world(std::string name, Engine* engine, NetMode stp) {
         }
         else
         {
-            NetSession *ses = NetSession::StartSession(stp, level);
-            if(ses)
+            if(NetSession::StartServer(engine))
             {
-                if(ses->StartServer())
-                {
-                    engine->setScreen(std::make_shared<LevelScreen>(engine, level));
-                }
-                else
-                {
-                    NetSession::TerminateSession();
-                }
+                engine->setScreen(std::make_shared<LevelScreen>(engine, level));
+            }
+            else
+            {
+                NetSession::TerminateSession();
             }
         }
     }
@@ -401,7 +397,7 @@ void create_content_panel(Engine* engine, PagesControl* menu) {
             std::string wname = world->getName();
             engine->setScreen(nullptr);
             engine->setScreen(std::make_shared<MenuScreen>(engine));
-            open_world(wname, engine);
+            open_world(wname, engine, NetMode::STAND_ALONE);
         });
         menu->add("content-packs", panel);
         menu->set("content-packs");
@@ -436,25 +432,21 @@ void create_multiplayer_panel(Engine* engine, PagesControl* menu) {
         std::wstring addr = addrInput->text();
         std::string addr8 = util::wstr2str_utf8(addr);
         std::cout << "Connect to: "<< addr8 << std::endl;
-
-        NetSession *session = NetSession::StartSession(NetMode::CLIENT, nullptr);
-
         engine->loadAllPacks();
         engine->loadContent();
 
-        if(session->ConnectToSession(addr8.c_str(), engine, true, true))
+        if(NetSession::ConnectToSession(addr8.c_str(), engine, true, true))
         {
-            auto folder = engine->getPaths()->getWorldsFolder()/fs::u8path(session->GetConnectionData().name + "_net");
+            auto folder = engine->getPaths()->getWorldsFolder()/fs::u8path(NetSession::GetConnectionData()->name + "_net");
             fs::create_directories(folder);
 
-            Level* level =  World::create(session->GetConnectionData().name, 
+            Level* level =  World::create(NetSession::GetConnectionData()->name, 
                                         folder, 
-                                        session->GetConnectionData().seed, 
+                                        NetSession::GetConnectionData()->seed, 
                                         engine->getSettings(), 
                                         engine->getContent(),
                                         engine->getContentPacks());
 
-            session->SetSharedLevel(level);
             engine->setScreen(std::make_shared<LevelScreen>(engine, level));        
         }
     }));

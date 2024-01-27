@@ -66,11 +66,10 @@ struct ConnectionData
 class server_client NetSession
 {
 private:
-    NetMode sesMode;
+    NetMode netMode;
     std::vector<NetUser *> users;
     Socket socket;
     Level *sharedLevel;
-    ConnectionData connData;
     // NetPackage pkgToSend;
 
     std::vector<NetMessage> messagesBuffer;
@@ -80,37 +79,37 @@ private:
     bool serverUpdate;
 
 private:
+    static ConnectionData *connData;
     static NetSession *sessionInstance;
 
 public:
-    static NetSession *StartSession(NetMode type, Level *sl);
+    static NetSession *GetSessionInstance();
+    static bool StartServer(Engine *eng);
+    static bool ConnectToSession(const char *ip, Engine *eng, bool versionChecking, bool contentChecking);
     static void TerminateSession();
-    static NetSession *GetSessionInstance() { return sessionInstance; }
+    static NetUser *GetUser(size_t i); // user 0 is constantly the local user
+    static const ConnectionData *GetConnectionData() { return connData; }
+    static void SetSharedLevel(Level *sl) noexcept;
+    static NetMode GetSessionType();
 
 public:
-    server void HandleConnection(Player *rp, int ui);
-    bool ConnectToSession(const char *ip, Engine *eng, bool versionChecking, bool contentChecking);
-    bool StartServer();
-    ConnectionData GetConnectionData() const { return connData; }
     void Update(float delta) noexcept;
     void RegisterMessage(const NetMessage msg) noexcept;
-    void SetSharedLevel(Level *sl) noexcept;
     void ClientFetchChunk(std::shared_ptr<Chunk> chunk, int x, int z);
 
 public:
-    NetMode GetSessionType() const;
-    NetUser *GetUser(size_t i) const; // user 0 is constantly the local user
 
 private:
-    NetSession(NetMode type, Player *lp, Level *sl);
+    NetSession(NetMode type);
     ~NetSession();
 
 private:
-    void ServerRoutine();
-    void ClientRoutine();
-    void ProcessPackage(NetPackage *pkg);
-    ubyte *ServerGetChunk(int x, int z) const;
-    NetUser *AddUser(NetUserRole role, Player *pl, int id);
+    server void handleConnection(int ui);
+    server void serverRoutine();
+    client void clientRoutine();
+    server_client void processPackage(NetPackage *pkg);
+    server ubyte *serverGetChunk(int x, int z) const;
+    server_client NetUser *addUser(NetUserRole role, int id);
 };
 
 #endif // NET_SESSION_H

@@ -101,18 +101,16 @@ bool Socket::UpdateServer(const std::vector<NetUser *> ins)
 
         if(usr->isConnected == false)
             continue;
-            
-        if(RecieveMessage(buff, NetSize(), usr->GetUniqueUserID(), false))
+        
+        int bytes = RecieveMessage(buff, NetSize(), usr->GetUniqueUserID(), false);
+        if(bytes >= 0)
         {
             Deserialize(buff);
         }
-        else
+        else if(bytes < 0)
         {
-            if(errno == 104)
-            {
-                std::cout << "Client just disconnected\n";
-                usr->isConnected = false;
-            }
+            // std::cout << errno << " " << sockfd << std::endl;
+            // usr->isConnected = false;
         }
     }
 
@@ -128,13 +126,54 @@ bool Socket::UpdateClient()
     assert(0 && "TODO: Implement windows API");
 #else
     char buff[NetSize()] = "";
-    if(RecieveMessage(buff, NetSize(), sockfd, false))
+    if(RecieveMessage(buff, NetSize(), sockfd, false) > 0)
     {
         Deserialize(buff);
         return true;
     }
 #endif // _WIN32
     return false;
+}
+
+void Socket::Disconnect()
+{
+    CloseSocket();
+}
+
+void Socket::CloseSocket()
+{
+#ifdef _WIN32
+    assert(0 && "TODO: Implement windows API");
+#else
+    close(sockfd);
+#endif // _WIN32
+}
+
+int Socket::RecieveMessage(char *buff, int length, socketfd sen, bool wait)
+{
+    if((isRunning || isConnected) == false) return false;
+#ifdef _WIN32
+    assert(0 && "TODO: Implement windows API");
+#else
+    int r = recv(sen, buff, length, wait ? 0 : MSG_DONTWAIT);
+    // if(r > 0)
+    //     std::cout << "read " << buff << std::endl;
+    return r;
+#endif // _WIN32
+}
+
+int Socket::SendMessage(const char *msg, int length, socketfd dest, bool wait)
+{
+    if((isRunning || isConnected) == false) return false;
+
+#ifdef _WIN32
+    assert(0 && "TODO: Implement windows API");
+#else 
+    int r = send(dest, msg, length, wait ? 0 : MSG_DONTWAIT);
+    // if(r > 0)
+    //     std::cout << "sent " << msg << std::endl;
+    return r;
+#endif // _WIN32
 }
 
 void Socket::Deserialize(const char *buff)
@@ -205,45 +244,6 @@ void Socket::Deserialize(const char *buff)
     }
 }
 
-
-void Socket::Disconnect()
-{
-    CloseSocket();
-}
-
-void Socket::CloseSocket()
-{
-#ifdef _WIN32
-    assert(0 && "TODO: Implement windows API");
-#else
-    close(sockfd);
-#endif // _WIN32
-}
-
-bool Socket::RecieveMessage(char *buff, int length, socketfd sen, bool wait)
-{
-    if((isRunning || isConnected) == false) return false;
-#ifdef _WIN32
-    assert(0 && "TODO: Implement windows API");
-#else
-    int r = recv(sen, buff, length, wait ? 0 : MSG_DONTWAIT);
-    // TODO: implement error checking
-    return r > 0;
-#endif // _WIN32
-}
-
-bool Socket::SendMessage(const char *msg, int length, socketfd dest, bool wait)
-{
-    if((isRunning || isConnected) == false) return false;
-
-#ifdef _WIN32
-    assert(0 && "TODO: Implement windows API");
-#else 
-    int r = send(dest, msg, length, wait ? 0 : MSG_DONTWAIT);
-    return r > 0;
-#endif // _WIN32
-}
-
 bool Socket::SendPackage(NetPackage *pckg, socketfd sock)
 {
     // Serialize package and send it
@@ -288,8 +288,8 @@ bool Socket::SendPackage(NetPackage *pckg, socketfd sock)
     }
     spk.put("count", pckg->GetMessagesCount());
 
-    std::string buff = json::stringify(&spk, true, "");
-    return SendMessage(buff.c_str(), buff.length(), sock, false);
+    std::string buff = json::stringify(&spk, false, "");
+    return SendMessage(buff.c_str(), buff.length(), sock, false) > 0;
 }
 
 bool Socket::RecievePackage(NetPackage *pckg)

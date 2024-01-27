@@ -15,9 +15,11 @@ LevelController::LevelController(EngineSettings& settings, Level* level)
     player = std::make_unique<PlayerController>(level, settings, blocks.get());
 
     scripting::on_world_load(level, blocks.get());
+    NetSession::SetSharedLevel(level);
 }
 
 LevelController::~LevelController() {
+    NetSession::TerminateSession();
 }
 
 void LevelController::update(float delta, bool input, bool pause) {

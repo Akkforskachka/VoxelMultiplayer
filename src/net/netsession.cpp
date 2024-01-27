@@ -20,32 +20,21 @@
 namespace fs = std::filesystem;
 
 NetSession *NetSession::sessionInstance = nullptr;
-
-NetSession *NetSession::StartSession(NetMode type, Level *sl)
-{
-    if(sessionInstance != nullptr)
-    {
-        std::cout << "[WARNING]: Session is alreadty started!\n";
-        TerminateSession();
-    }
-    if(sl)
-        sessionInstance = new NetSession(type, sl->player, sl);
-    else
-        sessionInstance = new NetSession(type, nullptr, nullptr);
-    return sessionInstance;
-}
+ConnectionData *NetSession::connData = nullptr;
 
 void NetSession::TerminateSession()
 {
     if(sessionInstance == nullptr)
         return;
     delete sessionInstance;
-    sessionInstance = nullptr;
 }
 
-NetSession::NetSession(NetMode mode, Player *lp, Level *sl) : 
-    sesMode(mode), 
-    sharedLevel(sl)
+NetSession *NetSession::GetSessionInstance()
+{
+    return sessionInstance;
+}
+
+NetSession::NetSession(NetMode mode) : netMode(mode)
 {
     messagesBuffer = std::vector<NetMessage>();
     serverUpdate = false;
@@ -62,32 +51,88 @@ NetSession::~NetSession()
     users.clear();
 }
 
-bool NetSession::StartServer()
+bool NetSession::StartServer(Engine *engine)
 {
-    if(sesMode == NetMode::PLAY_SERVER) 
+    if(sessionInstance)
     {
-        socket = Socket();
-        if(socket.StartupServer(NET_PORT))
-        {
-            std::cout << "[INFO]: Creating NetSession. NetMode = " << sesMode << std::endl;
-            AddUser(NetUserRole::AUTHORITY, sharedLevel->player, 0);
-            std::cout << "[INFO]: Server started" << std::endl;
-            return true;
-        }
-        else return false;
+        return false;
+    }
+
+    sessionInstance = new NetSession(NetMode::PLAY_SERVER);
+
+    sessionInstance->socket = Socket();
+    if(sessionInstance->socket.StartupServer(NET_PORT))
+    {
+        std::cout << "[INFO]: Creating NetSession. NetMode = " << sessionInstance->netMode << std::endl;
+        sessionInstance->addUser(NetUserRole::AUTHORITY, 0);
+        std::cout << "[INFO]: Server started" << std::endl;
+        return true;
     }
     return false;
 }
 
-
-void NetSession::SetSharedLevel(Level *sl) noexcept
+bool NetSession::ConnectToSession(const char *ip, Engine *eng, bool versionChecking, bool contentChecking)
 {
-    sharedLevel = sl;
+    if(sessionInstance) 
+    {
+        return false;
+    }
+    sessionInstance = new NetSession(NetMode::CLIENT);
+
+    sessionInstance->socket = Socket();
+    if(!sessionInstance->socket.ConnectTo(ip, NET_PORT))
+    {
+        std::cout << "[ERROR]: Couldn't connect for some reason" << std::endl;
+        return false;
+    }
+    std::cout << "[INFO]: Connected, waiting for initial message" << std::endl;
+    char buff[NetSize()];
+    sessionInstance->socket.RecieveMessage(buff, NetSize(), sessionInstance->socket.sockfd, true);
+    std::cout << "[INFO]: Connection message: " << buff << std::endl;
+
+    std::unique_ptr<dynamic::Map> data = json::parse(buff);
+    connData = new ConnectionData();
+
+    data->num("seed", connData->seed);
+    data->num("count", connData->blockCount);
+    data->map("version")->num("major", connData->major);
+    data->map("version")->num("minor", connData->minor);
+    data->num("user", connData->userID );
+    connData->name = data->getStr("name", "err");
+
+    // for(json::Value *val : data->arr("content")->values)
+    // {
+    //     if(val->type == json::valtype::string)
+    //     {
+    //         connData.blockNames.push_back(val->value.str->c_str());
+    //     }
+    // }
+
+    if(versionChecking)
+    {
+        if(connData->major != ENGINE_VERSION_MAJOR || connData->minor != ENGINE_VERSION_MINOR)
+            return false;
+    }
+
+    if(contentChecking)
+    {
+        if(connData->blockCount != eng->getContent()->getIndices()->countBlockDefs())
+            return false;
+
+        // for(std::string name : connData.blockNames)
+        // {
+        //     if(engine->getContent()->findBlock(name) == nullptr)
+        //     {
+        //         return false;
+        //     }
+        // }
+    }
+    sessionInstance->addUser(NetUserRole::LOCAL, connData->userID);
+    return true;
 }
-
-void NetSession::HandleConnection(Player *rp, socketfd ui)
+void NetSession::handleConnection(socketfd ui)
 {
-    AddUser(NetUserRole::REMOTE, rp, ui);
+    addUser(NetUserRole::REMOTE, ui);
     std::cout << "[INFO]: Handling new connection, uniq_id = " << ui << std::endl;
 
     sharedLevel->world->write(sharedLevel);
@@ -117,68 +162,37 @@ void NetSession::HandleConnection(Player *rp, socketfd ui)
     socket.SendMessage(msg.c_str(), msg.length(), ui, false);
 }
 
-bool NetSession::ConnectToSession(const char *ip, Engine *eng, bool versionChecking, bool contentChecking)
+NetMode NetSession::GetSessionType()
 {
-    socket = Socket();
-    if(!socket.ConnectTo(ip, NET_PORT))
+    if(!sessionInstance)
     {
-        std::cout << "[ERROR]: Couldn't connect for some reason" << std::endl;
-        return false;
+        return NetMode::STAND_ALONE;
     }
-    std::cout << "[INFO]: Connected, waiting for initial message" << std::endl;
-    char buff[NetSize()];
-    socket.RecieveMessage(buff, NetSize(), socket.sockfd, true);
-    std::cout << "[INFO]: Connection message: " << buff << std::endl;
-
-    std::unique_ptr<dynamic::Map> data = json::parse(buff);
-
-    data->num("seed", connData.seed);
-    data->num("count", connData.blockCount);
-    data->map("version")->num("major", connData.major);
-    data->map("version")->num("minor", connData.minor);
-    data->num("user", connData.userID );
-    connData.name = data->getStr("name", "err");
-
-    // for(json::Value *val : data->arr("content")->values)
-    // {
-    //     if(val->type == json::valtype::string)
-    //     {
-    //         connData.blockNames.push_back(val->value.str->c_str());
-    //     }
-    // }
-
-    if(versionChecking)
-    {
-        if(connData.major != ENGINE_VERSION_MAJOR || connData.minor != ENGINE_VERSION_MINOR)
-            return false;
-    }
-
-    if(contentChecking)
-    {
-        if(connData.blockCount != eng->getContent()->getIndices()->countBlockDefs())
-            return false;
-
-        // for(std::string name : connData.blockNames)
-        // {
-        //     if(engine->getContent()->findBlock(name) == nullptr)
-        //     {
-        //         return false;
-        //     }
-        // }
-    }
-    AddUser(NetUserRole::LOCAL, nullptr, connData.userID);
-    return true;
+    return sessionInstance->netMode;
 }
 
-NetUser *NetSession::AddUser(NetUserRole role, Player *pl, int id)
+
+void NetSession::SetSharedLevel(Level *sl) noexcept
 {
-    NetUser *user = new NetUser(role, pl, id);
+    if(sessionInstance)
+    {
+        sessionInstance->sharedLevel = sl;
+        std::cout << "shared level been set\n";
+    }
+}
+
+
+
+NetUser *NetSession::addUser(NetUserRole role, int id)
+{
+    NetUser *user = new NetUser(role, id);
+    user->isConnected = true;
     std::cout << "[INFO]: Adding NetUser with userID  = "  << user->GetUniqueUserID() << std::endl;
     users.push_back(user);
     return user;
 }
 
-void NetSession::ProcessPackage(NetPackage *pkg)
+void NetSession::processPackage(NetPackage *pkg)
 {
     bool b = false;
 
@@ -199,7 +213,7 @@ void NetSession::ProcessPackage(NetPackage *pkg)
                 messagesBuffer.pop_back(); // some shit again
             break;
             case NetAction::FETCH:
-                if(sesMode == NetMode::CLIENT)
+                if(netMode == NetMode::CLIENT)
                 {
                     std::shared_ptr<Chunk> chunk = sharedLevel->chunksStorage->get((int)msg.coordinates.x, (int)msg.coordinates.z);
                     if(chunk == nullptr) continue;
@@ -227,11 +241,11 @@ void NetSession::ProcessPackage(NetPackage *pkg)
                         chunk->setLighted(false);
                     }                            
                 }
-                else if(sesMode == NetMode::PLAY_SERVER)
+                else if(netMode == NetMode::PLAY_SERVER)
                 {
                     if(b) continue;
 
-                    ubyte *chunkData = ServerGetChunk((int)msg.coordinates.x, (int)msg.coordinates.z);
+                    ubyte *chunkData = serverGetChunk((int)msg.coordinates.x, (int)msg.coordinates.z);
 
                     if(chunkData)
                     {
@@ -249,30 +263,33 @@ void NetSession::ProcessPackage(NetPackage *pkg)
     }
 }
 
-void NetSession::ServerRoutine()
+void NetSession::serverRoutine()
 {
     if(socket.UpdateServer(users))
     {
         while(socket.HasNewConnection())
         {
             socketfd cl = socket.GetNewConnection();
-            HandleConnection(nullptr, cl);
+            handleConnection(cl);
         }
 
         NetPackage inPkg = NetPackage();
         while(socket.RecievePackage(&inPkg))
         {
-            ProcessPackage(&inPkg);
+            processPackage(&inPkg);
         }
 
         NetPackage servPkg = NetPackage();
         NetMessage upd = NetMessage();
         upd.action = NetAction::SERVER_UPDATE;
-        upd.coordinates.x = sharedLevel->getWorld()->daytime;
-        upd.coordinates.y = WorldRenderer::fog;
+        if(sharedLevel)
+        {
+            upd.coordinates.x = sharedLevel->getWorld()->daytime;
+            upd.coordinates.y = WorldRenderer::fog;
+        }
         servPkg.AddMessage(upd);
 
-        for(size_t i = 0; i < MAX_MESSAGES_PER_PACKET && !messagesBuffer.empty(); ++i)
+        for(size_t i = 0; servPkg.GetMessagesCount() < MAX_MESSAGES_PER_PACKET && !messagesBuffer.empty(); ++i)
         {
             servPkg.AddMessage(messagesBuffer[messagesBuffer.size() - i - 1]);
             messagesBuffer.pop_back();
@@ -286,14 +303,14 @@ void NetSession::ServerRoutine()
     }
 }
 
-void NetSession::ClientRoutine()
+void NetSession::clientRoutine()
 {
     if(socket.UpdateClient())
     {
         NetPackage inPkg = NetPackage();
         while(socket.RecievePackage(&inPkg))
         {
-            ProcessPackage(&inPkg);
+            processPackage(&inPkg);
         }
     }
 
@@ -312,11 +329,11 @@ void NetSession::ClientRoutine()
 
         NetPackage pkgToSend = NetPackage();
 
-        for(size_t i = 0; i < MAX_MESSAGES_PER_PACKET && !messagesBuffer.empty(); ++i)
+        for(size_t i = 0; pkgToSend.GetMessagesCount() < MAX_MESSAGES_PER_PACKET  && !messagesBuffer.empty(); ++i)
         {
             pkgToSend.AddMessage(messagesBuffer[i]);
             messagesBuffer.pop_back();
-        }
+        } 
 
         if(pkgToSend.GetMessagesCount() > 0)
         {
@@ -331,7 +348,7 @@ void NetSession::ClientFetchChunk(std::shared_ptr<Chunk> chunk, int x, int z)
     chunksQueue.insert_or_assign({x, z}, chunk);
 }
 
-ubyte *NetSession::ServerGetChunk(int x, int z) const
+ubyte *NetSession::serverGetChunk(int x, int z) const
 {
     std::shared_ptr<Chunk> chunk = sharedLevel->chunksStorage->get(x, z);
 
@@ -345,11 +362,11 @@ ubyte *NetSession::ServerGetChunk(int x, int z) const
     }
 
     // load and get chunk from hard drive
-    chunk = sharedLevel->chunksStorage->create(x, z);    
-    if(chunk->isLoaded())
-    {
-        return chunk->encode();
-    }
+    // chunk = sharedLevel->chunksStorage->create(x, z);    
+    // if(chunk->isLoaded())
+    // {
+    //     return chunk->encode();
+    // }
 
     // generate chunk
     
@@ -359,19 +376,20 @@ ubyte *NetSession::ServerGetChunk(int x, int z) const
 float serv_delta = 0;
 void NetSession::Update(float delta) noexcept
 {
+    if(!sharedLevel) return;
+
     serv_delta += delta;
-    switch(sesMode)
+    switch(netMode)
     {
         case NetMode::PLAY_SERVER:
             if(serv_delta >= 1 / SERVER_BIT_RATE)
             {
-                ServerRoutine();
+                serverRoutine();
                 serv_delta = 0;
-                serverUpdate = true;
             }
         break;
         case NetMode::CLIENT:
-            ClientRoutine();
+            clientRoutine();
         break;
         case NetMode::STAND_ALONE:
         return;
@@ -383,14 +401,13 @@ void NetSession::RegisterMessage(const NetMessage msg) noexcept
     messagesBuffer.push_back(msg);
 }
 
-NetMode NetSession::GetSessionType() const
+NetUser *NetSession::GetUser(size_t i)
 {
-    return sesMode;
-}
-
-NetUser *NetSession::GetUser(size_t i) const
-{
-    return users[i];
+    if(sessionInstance)
+    {
+        return sessionInstance->users[i];
+    }
+    return nullptr;
 }
 
 
