@@ -261,7 +261,7 @@ int Socket::SendMessage(const char *msg, size_t length, socketfd dest, bool wait
     memcpy(buffer.data() + sizeof(uint32_t) + sizeof(size_t), msg, length);
 
 #ifdef _WIN32
-    int r = send(dest, buffer.data(), length, 0);
+    int r = send(dest, buffer.data(), buffer.size(), 0);
 #else 
     int r = send(dest, buffer.data(), buffer.size(), wait ? 0 : MSG_DONTWAIT);
 #endif // _WIN32
