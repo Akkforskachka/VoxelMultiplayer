@@ -14,10 +14,10 @@
 #define NET_PORT 6969
 #define SERVER_BIT_RATE 30
 #define MAX_CONN 5
-#define MAX_MESSAGES_PER_PACKET 20
+#define MAX_MESSAGES_PER_PACKET 100
 
 #ifdef _WIN32
-    #include <WinSock2.h>>
+    #include <WinSock2.h>
     #undef GetMessage
     #undef SendMessage
     typedef SOCKET socketfd;
@@ -77,7 +77,7 @@ struct ConnectionData
     int minor;
 };
 
-constexpr int NetSize()  { return 9128; } // todo
+constexpr int MaxNetSize()  { return 50 * 1024 * 1024; } // 50 mb
 
 
 #endif // NET_UTILS_H

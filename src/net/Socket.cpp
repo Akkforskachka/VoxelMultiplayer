@@ -20,6 +20,8 @@ WSADATA data{};
 #include <strings.h>
 #endif // _WIN32
 
+constexpr uint32_t PROTOCOL_MAGIC = 0xFF123FF;
+
 bool Socket::StartupServer(const int port)
 {
 #ifdef _WIN32
@@ -130,15 +132,18 @@ bool Socket::UpdateServer(const std::unordered_map<uniqueUserID, NetUser *> ins)
         NetUser *usr = pair.second;
         if(usr->GetUniqueUserID() == 0) continue;;
         
-        char buff[NetSize()] = "";
+        std::vector<char> msg;
 
         if(usr->isConnected == false)
             continue;
         
-        int bytes = RecieveMessage(buff, NetSize(), usr->GetUniqueUserID(), false);
+        int bytes = RecieveMessage(msg, MaxNetSize(), usr->GetUniqueUserID(), false);
         if(bytes > 0)
         {
-            Deserialize(buff);
+            if(!Deserialize(msg.data()))
+            {
+                cleanUpSocket(usr->GetUniqueUserID());
+            }
         }
     }
 
@@ -149,11 +154,14 @@ bool Socket::UpdateClient()
 {
     if(isConnected == false) return false; 
 
-    char buff[NetSize()] = "";
-    int bytes = RecieveMessage(buff, NetSize(), sockfd, false);
+    std::vector<char> msg;
+    int bytes = RecieveMessage(msg, MaxNetSize(), sockfd, false);
     if(bytes > 0)
     {
-        Deserialize(buff);
+        if(!Deserialize(msg.data()))
+        {
+            cleanUpSocket(sockfd);
+        }
         return true;
     }
 
@@ -175,35 +183,97 @@ void Socket::CloseSocket()
 #endif // _WIN32
 }
 
-int Socket::RecieveMessage(char *buff, int length, socketfd sen, bool wait)
+void Socket::cleanUpSocket(socketfd sock)
 {
-    if((isRunning || isConnected) == false) return false;
+    char buff[1024];
 #ifdef _WIN32
-    int r = recv(sen, buff, length, 0);
-#else
-    int r = recv(sen, buff, length, wait ? 0 : MSG_DONTWAIT);
-#endif // _WIN32
-    return r;
-}
-
-int Socket::SendMessage(const char *msg, int length, socketfd dest, bool wait)
-{
-    if((isRunning || isConnected) == false) return false;
-
-#ifdef _WIN32
-    int r = send(dest, msg, length, 0);
-#else 
-    int r = send(dest, msg, length, wait ? 0 : MSG_DONTWAIT);
-#endif // _WIN32
-    if(r <= 0)
-    {
-        std::cout << "PACKAGE LOsT" << std::endl;
+    while(recv(sock, buff, 1024, 0) > 0) {
     }
+#else
+    while(recv(sock, buff, 1024, MSG_DONTWAIT) > 0) {
+    }
+#endif
+}
+
+
+int Socket::RecieveMessage(std::vector<char>& msg, size_t maxlength, socketfd sen, bool wait)
+{
+    if((isRunning || isConnected) == false) return false;
+
+    uint32_t prot = 0;
+    size_t msgSize = 0;
+
+#ifdef _WIN32
+    int r = recv(sen, &prot, length, 0);
+#else
+    int r = recv(sen, &prot, sizeof(uint32_t), wait ? 0 : MSG_DONTWAIT);
+#endif // _WIN32
+
+    if(r < 0)
+    {
+        return r;
+    }
+    if(prot != PROTOCOL_MAGIC)
+    {
+        std::cout << "no protocol magic detected\n";
+        cleanUpSocket(sen);
+        return -1;
+    }
+#ifdef _WIN32
+    r = recv(sen, &msgSize, sizeof(size_t), 0);
+#else
+    r = recv(sen, &msgSize, sizeof(size_t), wait ? 0 : MSG_DONTWAIT);
+#endif // _WIN32
+    if(r != sizeof(size_t))
+    {
+        std::cout << "invalid message\n";
+        cleanUpSocket(sen);
+        return -1;
+    }
+    if(msgSize <= 0 || msgSize > maxlength)
+    {
+        std::cout << "invalid size\n";
+        cleanUpSocket(sen);
+        return -1;
+    }
+    msg.resize(msgSize);
+#ifdef _WIN32
+    r = recv(sen, msg.data(), msgSize, 0);
+#else
+    r = recv(sen, msg.data(), msgSize, wait ? 0 : MSG_DONTWAIT);
+#endif // _WIN32
     return r;
 }
 
-void Socket::Deserialize(const char *buff)
+int Socket::SendMessage(const char *msg, size_t length, socketfd dest, bool wait)
 {
+    if((isRunning || isConnected) == false) return false;
+
+    if(!msg || length <= 0)
+    {
+        return -1;
+    }
+
+    std::vector<char> buffer(sizeof(uint32_t) + sizeof(size_t) + length);
+
+    memcpy(buffer.data(), &PROTOCOL_MAGIC, sizeof(uint32_t));
+    memcpy(buffer.data() + sizeof(uint32_t), &length, sizeof(size_t));
+    memcpy(buffer.data() + sizeof(uint32_t) + sizeof(size_t), msg, length);
+
+#ifdef _WIN32
+    int r = send(dest, buffer.data(), length, 0);
+#else 
+    int r = send(dest, buffer.data(), buffer.size(), wait ? 0 : MSG_DONTWAIT);
+#endif // _WIN32
+    return r;
+}
+
+bool Socket::Deserialize(const char *buff)
+{
+    if(!buff)
+    {
+        return false;
+    }
     std::unique_ptr<dynamic::Map> pckg;
     try
     {
@@ -212,7 +282,7 @@ void Socket::Deserialize(const char *buff)
     catch(const std::exception& e)
     {
         std::cerr << e.what() << " in message " << buff << std::endl;
-        return;
+        return false;
     }        
 
     if(pckg)
@@ -268,6 +338,7 @@ void Socket::Deserialize(const char *buff)
         }
         inPkg.push_back(sPkg);
     }
+    return true;
 }
 
 bool Socket::SendPackage(NetPackage *pckg, socketfd sock)

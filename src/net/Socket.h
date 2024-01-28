@@ -65,12 +65,14 @@ public:
                                         return ret; }
 
     // buff -buffer to store data, length - length of message to read, sen - sender of a message, wait - should wait for a message?
-    server_client int RecieveMessage(char *buff, int length, socketfd sen, bool wait);
+    server_client int RecieveMessage(std::vector<char>& msg, size_t maxlength, socketfd sen, bool wait);
     // buff -buffer to store data, length - length of message to read, dest - destination, wait - should wait for a message?
-    server_client int SendMessage(const char *msg, int length, socketfd dest, bool wait);
+    server_client int SendMessage(const char *msg, size_t length, socketfd dest, bool wait);
 
 private:
-    void Deserialize(const char *buff);
+    bool Deserialize(const char *buff);
+    // Cleans up the socket queue
+    void cleanUpSocket(socketfd sock);
 };
 
 #endif // SOCKET_H

@@ -88,12 +88,12 @@ bool NetSession::ConnectToSession(const char *ip, const int port, Engine *eng, b
         return false;
     }
     std::cout << "[INFO]: Connected, waiting for initial message" << std::endl;
-    char buff[NetSize()];
-    if(sessionInstance->socket.RecieveMessage(buff, NetSize(), sessionInstance->socket.sockfd, true) > 0)
+    std::vector<char> msg;
+    if(sessionInstance->socket.RecieveMessage(msg, MaxNetSize(), sessionInstance->socket.sockfd, true) > 0)
     {
-        std::cout << "[INFO]: Connection message: " << buff << std::endl;
+        std::cout << "[INFO]: Connection message: " << msg.data() << std::endl;
 
-        std::unique_ptr<dynamic::Map> data = json::parse(buff);
+        std::unique_ptr<dynamic::Map> data = json::parse(msg.data());
         connData = new ConnectionData();
 
         data->num("seed", connData->seed);
@@ -204,11 +204,11 @@ NetUser *NetSession::addUser(NetUserRole role, uniqueUserID id)
 
 void NetSession::packMessages(NetPackage *dst)
 {
-    for(size_t i = 0; dst->GetMessagesCount() < MAX_MESSAGES_PER_PACKET  && !messagesBuffer.empty(); ++i)
-    {
-        size_t index = messagesBuffer.size() - i - 1;
-        if (index >= messagesBuffer.size()) break;
-        dst->AddMessage(messagesBuffer[index]);
+    size_t messages = std::min(MAX_MESSAGES_PER_PACKET - dst->GetMessagesCount(), messagesBuffer.size());
+
+    while (messages) {
+        messages--;
+        dst->AddMessage(messagesBuffer.back());
         messagesBuffer.pop_back();
     }
 }
